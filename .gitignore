@@ -1,6 +1,27 @@
+# Dependencies
 node_modules/
-.env
+
+# Build output
 dist/
-.next/
+
+# Environment variables — never commit secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Test coverage
 coverage/
+
+# TODO: add any project-specific ignores here

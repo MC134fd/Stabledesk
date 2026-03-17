@@ -1,0 +1,6 @@
+{
+  "minLiquidReserveUsdc": "500000000",
+  "targetLiquidReserveUsdc": "1000000000",
+  "maxSingleTransactionUsdc": "50000000000",
+  "kaminoTargetAllocationPct": 80
+}

@@ -1,0 +1,10 @@
+[
+  {
+    "id": "fixture-payment-001",
+    "recipient": "11111111111111111111111111111111",
+    "amountUsdc": "1000000",
+    "memo": "fixture payment",
+    "status": "pending",
+    "scheduledAt": "1970-01-01T00:00:00.000Z"
+  }
+]
