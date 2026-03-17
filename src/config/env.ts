@@ -1,8 +1,19 @@
-// TODO: Parse and validate environment variables at startup.
-// - Use a schema validation library (e.g. zod) to enforce required fields
-// - Throw a descriptive error on missing or malformed values
-// - Expose a single typed `env` object consumed across the codebase
+type EnvConfig = {
+  rpcUrl: string;
+  treasuryWallet: string;
+};
 
-export const env = {
-  // TODO: populate from process.env with validation
-} as const;
+function requireEnv(key: string): string {
+  const value = (process.env[key] ?? '').trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+  return value;
+}
+
+export function loadEnv(): EnvConfig {
+  return {
+    rpcUrl: requireEnv('SOLANA_RPC_URL'),
+    treasuryWallet: requireEnv('TREASURY_WALLET_PUBLIC_KEY'),
+  };
+}

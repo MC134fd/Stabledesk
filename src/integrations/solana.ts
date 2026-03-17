@@ -1,9 +1,22 @@
-// TODO: Initialize and export the Solana connection/client.
-// - Create a Connection from SOLANA_RPC_URL
-// - Load the treasury keypair from TREASURY_KEYPAIR
-// - Provide helpers for sending and confirming transactions
-// - Handle RPC rate limits and retry logic
+import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 
 export const solanaClient = {
-  // TODO: implement connection, keypair, sendTransaction, confirmTransaction
-} as const;
+  createConnection(rpcUrl: string): Connection {
+    return new Connection(rpcUrl, 'confirmed');
+  },
+
+  async getCurrentSlot(connection: Connection): Promise<number> {
+    return connection.getSlot();
+  },
+
+  async getSolBalance(connection: Connection, walletAddress: string): Promise<number> {
+    let publicKey: PublicKey;
+    try {
+      publicKey = new PublicKey(walletAddress);
+    } catch {
+      throw new Error(`Invalid treasury wallet public key: "${walletAddress}"`);
+    }
+    const lamports = await connection.getBalance(publicKey);
+    return lamports / LAMPORTS_PER_SOL;
+  },
+};
