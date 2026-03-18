@@ -65,8 +65,9 @@ export function createKaminoAdapter(
 
   async function ensureMarket(): Promise<KaminoMarket> {
     if (!market) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       market = await KaminoMarket.load(
-        rpc, marketAddr, DEFAULT_RECENT_SLOT_DURATION_MS, klendProgramId,
+        rpc as any, marketAddr, DEFAULT_RECENT_SLOT_DURATION_MS, klendProgramId,
       );
       if (!market) throw new Error("Failed to load Kamino market");
       log.info("Kamino market loaded", { address: marketAddress });

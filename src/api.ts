@@ -2,15 +2,13 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { PublicKey } from "@solana/web3.js";
-import { Hono } from "hono";
-import { paymentStore } from "./payments/payment-store.js";
+import { Hono, type Context } from "hono";
 import { auditService } from "./audit/audit-service.js";
 import { fmtUsdc } from "./core/liquidity-policy.js";
-import { formatTokenAmount } from "./config/stablecoins.js";
 import type { TreasuryState } from "./core/treasury-state.js";
-import type { PaymentRequest } from "./payments/payment-types.js";
-import type { PaymentStatus } from "./payments/payment-types.js";
+import type { CreatePaymentInput, PaymentStatus } from "./payments/payment-types.js";
 import type { LendingManager } from "./integrations/lending/manager.js";
+import type { PaymentService } from "./payments/payment-service.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let dashboardHtml: string;
@@ -24,7 +22,7 @@ try {
   }
 }
 
-const VALID_STATUSES: PaymentStatus[] = ["pending", "processing", "completed", "failed"];
+const VALID_STATUSES: PaymentStatus[] = ["queued", "awaiting_liquidity", "ready", "processing", "sent", "failed"];
 
 /** Validate that a string is a valid base58 Solana public key */
 function isValidPublicKey(str: string): boolean {
@@ -40,10 +38,7 @@ interface ApiDeps {
   getState: () => TreasuryState;
   getLastDecision: () => unknown;
   lendingManager: LendingManager;
-  paymentService: {
-    createPayment(req: PaymentRequest): unknown;
-    processPayment(id: string): Promise<unknown>;
-  };
+  paymentService: PaymentService;
   /** Optional API key for write operations. If set, POST requests require Bearer token. */
   apiKey?: string;
 }
@@ -52,7 +47,7 @@ export function createApi(deps: ApiDeps) {
   const app = new Hono();
 
   // API key auth middleware for mutating endpoints
-  const requireAuth = (c: any, next: () => Promise<void>) => {
+  const requireAuth = (c: Context, next: () => Promise<void>) => {
     if (!deps.apiKey) return next(); // no key configured = open access
     const auth = c.req.header("Authorization") ?? "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -63,61 +58,38 @@ export function createApi(deps: ApiDeps) {
   };
 
   // Dashboard
-  app.get("/", (c) => c.html(dashboardHtml));
+  app.get("/", (c: Context) => c.html(dashboardHtml));
 
   // Health check
-  app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
+  app.get("/health", (c: Context) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
-  // Treasury state (backward-compatible + new multi-token data)
-  app.get("/state", (c) => {
+  // Treasury state
+  app.get("/state", (c: Context) => {
     const s = deps.getState();
 
-    // Build per-token breakdown
-    const tokenBreakdown: Record<string, any> = {};
-    for (const [symbol, bal] of s.balances) {
-      const byProtocol: Record<string, string> = {};
-      for (const [proto, amount] of bal.deployedByProtocol) {
-        byProtocol[proto] = amount.toString();
-      }
-      tokenBreakdown[symbol] = {
-        liquid: bal.liquid.toString(),
-        deployed: bal.deployed.toString(),
-        total: (bal.liquid + bal.deployed).toString(),
-        deployedByProtocol: byProtocol,
-      };
-    }
-
-    // Build per-protocol APY summary
-    const protocolSummary = s.lendingPositions.map((p) => ({
-      protocol: p.protocol,
-      token: p.token,
-      deposited: p.depositedAmount.toString(),
-      apy: p.supplyApy,
-    }));
-
     return c.json({
-      // Legacy fields (dashboard expects these)
-      liquidUsdc: s.liquidUsdc.toString(),
-      liquidUsdcFormatted: fmtUsdc(s.liquidUsdc),
-      kaminoDeposited: s.kaminoDeposited.toString(),
-      kaminoDepositedFormatted: fmtUsdc(s.kaminoDeposited),
-      totalUsdc: s.totalUsdc.toString(),
-      totalUsdcFormatted: fmtUsdc(s.totalUsdc),
-      pendingObligations: s.pendingObligations.toString(),
-      lastUpdatedSlot: s.lastUpdatedSlot,
+      // Core fields
+      liquidUsdc: s.usdcBalance.toFixed(6),
+      liquidUsdcFormatted: fmtUsdc(s.usdcBalance),
+      kaminoDeposited: s.kaminoUsdcBalance.toFixed(6),
+      kaminoDepositedFormatted: fmtUsdc(s.kaminoUsdcBalance),
+      totalUsdc: s.totalUsdcExposure.toFixed(6),
+      totalUsdcFormatted: fmtUsdc(s.totalUsdcExposure),
+      pendingObligations: s.pendingPaymentsTotal.toFixed(6),
       lastUpdatedAt: s.lastUpdatedAt,
       lastDecision: deps.getLastDecision(),
-      // New multi-token/multi-protocol fields
-      totalLiquid: s.totalLiquid.toString(),
-      totalDeployed: s.totalDeployed.toString(),
-      totalAum: s.totalAum.toString(),
-      tokens: tokenBreakdown,
-      positions: protocolSummary,
+      // Aggregated multi-token totals (USDC-only for now)
+      totalLiquid: s.usdcBalance.toFixed(6),
+      totalDeployed: s.kaminoUsdcBalance.toFixed(6),
+      totalAum: s.totalUsdcExposure.toFixed(6),
+      // Multi-token/multi-protocol stubs (future milestone)
+      tokens: {},
+      positions: [],
     });
   });
 
   // Lending: list all positions across all protocols
-  app.get("/lending", async (c) => {
+  app.get("/lending", async (c: Context) => {
     const portfolio = await deps.lendingManager.getPortfolio();
     return c.json({
       positions: portfolio.positions.map((p) => ({
@@ -136,8 +108,8 @@ export function createApi(deps: ApiDeps) {
   });
 
   // Lending: get best APY for a token
-  app.get("/lending/best-apy/:token", async (c) => {
-    const token = c.req.param("token").toUpperCase();
+  app.get("/lending/best-apy/:token", async (c: Context) => {
+    const token = (c.req.param("token") ?? "").toUpperCase();
     const best = await deps.lendingManager.getBestApy(token);
     if (!best) return c.json({ error: `No protocol supports ${token}` }, 404);
     return c.json({
@@ -149,28 +121,27 @@ export function createApi(deps: ApiDeps) {
   });
 
   // List payments
-  app.get("/payments", (c) => {
+  app.get("/payments", (c: Context) => {
     const status = c.req.query("status");
     if (status && !VALID_STATUSES.includes(status as PaymentStatus)) {
       return c.json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` }, 400);
     }
     const payments = status
-      ? paymentStore.findByStatus(status as PaymentStatus)
-      : paymentStore.all();
+      ? deps.paymentService.listPayments().filter((p) => p.status === (status as PaymentStatus))
+      : deps.paymentService.listPayments();
     return c.json(
       payments.map((p) => ({
         ...p,
-        amountUsdc: p.amountUsdc.toString(),
-        amountFormatted: fmtUsdc(p.amountUsdc),
+        amountUsdcFormatted: fmtUsdc(p.amountUsdc),
       })),
     );
   });
 
   // Create a payment (requires auth if API key is configured)
-  app.post("/payments", requireAuth, async (c) => {
+  app.post("/payments", requireAuth, async (c: Context) => {
     try {
-      const body = await c.req.json();
-      const { recipient, amountUsdc, memo, scheduledAt } = body;
+      const body = await c.req.json() as Record<string, unknown>;
+      const { recipient, amountUsdc, reference, dueAt } = body;
 
       if (!recipient || amountUsdc === undefined || amountUsdc === null) {
         return c.json({ error: "recipient and amountUsdc are required" }, 400);
@@ -181,22 +152,20 @@ export function createApi(deps: ApiDeps) {
         return c.json({ error: "recipient must be a valid Solana public key" }, 400);
       }
 
-      // Validate amountUsdc is a non-negative integer (string or number)
-      const amountStr = String(amountUsdc);
-      if (!/^\d+$/.test(amountStr)) {
-        return c.json({ error: "amountUsdc must be a non-negative integer (micro-USDC)" }, 400);
+      // Validate amountUsdc is a positive number
+      const parsedAmount = typeof amountUsdc === "string" ? parseFloat(amountUsdc) : Number(amountUsdc);
+      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        return c.json({ error: "amountUsdc must be a positive number (human USDC, e.g. 100 = 100 USDC)" }, 400);
       }
 
-      const parsedAmount = BigInt(amountStr);
-
-      const req: PaymentRequest = {
+      const input: CreatePaymentInput = {
         recipient,
         amountUsdc: parsedAmount,
-        memo,
-        scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined,
+        ...(typeof reference === "string" && { reference }),
+        ...(typeof dueAt === "string" && { dueAt }),
       };
 
-      const record = deps.paymentService.createPayment(req);
+      const record = deps.paymentService.createPayment(input);
       return c.json(record, 201);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -205,9 +174,11 @@ export function createApi(deps: ApiDeps) {
   });
 
   // Process a specific payment immediately (requires auth)
-  app.post("/payments/:id/process", requireAuth, async (c) => {
+  app.post("/payments/:id/process", requireAuth, async (c: Context) => {
     try {
-      const record = await deps.paymentService.processPayment(c.req.param("id"));
+      const id = c.req.param("id");
+      if (!id) return c.json({ error: "Payment ID required" }, 400);
+      const record = await deps.paymentService.processPayment(id);
       return c.json(record);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -216,7 +187,7 @@ export function createApi(deps: ApiDeps) {
   });
 
   // Audit log
-  app.get("/audit", (c) => {
+  app.get("/audit", (c: Context) => {
     const action = c.req.query("action");
     const since = c.req.query("since");
     const events = auditService.query({

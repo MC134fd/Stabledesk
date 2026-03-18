@@ -1,48 +1,34 @@
 import { loadEnv } from "../config/env.js";
-import { defaultPolicy } from "../config/policy.js";
 import { createSolanaClient } from "../integrations/solana.js";
-import { createUsdcClient } from "../integrations/usdc.js";
 import { createKoraClient } from "../integrations/kora.js";
 import { createPaymentService } from "../payments/payment-service.js";
-import { emptyState, type TreasuryState } from "../core/treasury-state.js";
-import { fmtUsdc } from "../core/liquidity-policy.js";
 
 export async function createPayment() {
   const args = process.argv.slice(2);
   if (args.length < 2) {
-    console.error("Usage: create-payment <recipient> <amountUsdc> [memo]");
+    console.error("Usage: create-payment <recipient> <amountUsdc> [reference]");
     console.error("  amountUsdc is in human-readable form (e.g. 100 = 100 USDC)");
     process.exit(1);
   }
 
-  const [recipient, amountStr, ...memoWords] = args;
-  const amountUsdc = BigInt(Math.floor(parseFloat(amountStr) * 1_000_000));
-  const memo = memoWords.join(" ") || undefined;
+  const [recipient, amountStr, ...refWords] = args;
+  const amountUsdc = parseFloat(amountStr);
+  if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) {
+    console.error("amountUsdc must be a positive number");
+    process.exit(1);
+  }
+  const reference = refWords.join(" ") || undefined;
 
   const env = loadEnv();
   const solana = createSolanaClient(env.SOLANA_RPC_URL, env.TREASURY_KEYPAIR);
-  const usdc = createUsdcClient(solana, env.USDC_MINT_ADDRESS);
   const kora = createKoraClient(solana, env.KORA_ENDPOINT ? { endpoint: env.KORA_ENDPOINT } : undefined);
 
-  // Fetch live state for liquidity check
-  const balance = await usdc.getBalance();
-  const state: TreasuryState = {
-    ...emptyState(),
-    liquidUsdc: balance,
-    totalUsdc: balance,
-  };
+  const paymentService = createPaymentService({ kora });
 
-  const paymentService = createPaymentService({
-    usdc,
-    kora,
-    getState: () => state,
-    policy: defaultPolicy,
-  });
-
-  const record = paymentService.createPayment({ recipient, amountUsdc, memo });
+  const record = paymentService.createPayment({ recipient, amountUsdc, reference });
   console.log(`\nPayment created: ${record.id}`);
   console.log(`  To: ${recipient}`);
-  console.log(`  Amount: ${fmtUsdc(amountUsdc)}`);
+  console.log(`  Amount: ${amountUsdc.toFixed(2)} USDC`);
   console.log(`  Status: ${record.status}`);
 
   // Process immediately

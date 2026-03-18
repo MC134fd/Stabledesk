@@ -43,3 +43,8 @@ export function evaluateLiquidityPolicy(input: LiquidityPolicyInput): LiquidityE
 
   return { targetLiquidity, excessLiquidity, liquidityShortfall, action };
 }
+
+/** Format a human-USDC number as a display string (e.g. "1234.56 USDC") */
+export function fmtUsdc(n: number): string {
+  return `${n.toFixed(2)} USDC`;
+}

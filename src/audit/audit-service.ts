@@ -22,10 +22,17 @@ export type AuditFilter = {
   toDate?: string;
 };
 
+export type AuditQueryOptions = {
+  action?: string;
+  since?: Date;
+  until?: Date;
+};
+
 export type AuditService = {
   recordEvent(type: AuditEventType, data?: unknown): AuditEvent;
   listEvents(): AuditEvent[];
   queryEvents(filter?: AuditFilter): AuditEvent[];
+  query(opts?: AuditQueryOptions): AuditEvent[];
 };
 
 type AuditServiceOptions = {
@@ -64,6 +71,15 @@ export function createAuditService(options: AuditServiceOptions = {}): AuditServ
         if (filter.type !== undefined && e.type !== filter.type) return false;
         if (filter.fromDate !== undefined && e.timestamp < filter.fromDate) return false;
         if (filter.toDate !== undefined && e.timestamp > filter.toDate) return false;
+        return true;
+      });
+    },
+
+    query(opts: AuditQueryOptions = {}) {
+      return events.filter((e) => {
+        if (opts.action !== undefined && e.type !== opts.action) return false;
+        if (opts.since !== undefined && e.timestamp < opts.since.toISOString()) return false;
+        if (opts.until !== undefined && e.timestamp > opts.until.toISOString()) return false;
         return true;
       });
     },

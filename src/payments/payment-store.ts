@@ -11,7 +11,9 @@ export type PaymentStore = {
   create(payment: Payment): Payment;
   getById(id: string): Payment | undefined;
   listAll(): Payment[];
+  all(): Payment[];
   listPending(): Payment[];
+  findByStatus(status: PaymentStatus): Payment[];
   updateStatus(id: string, nextStatus: PaymentStatus): Payment;
   summarizePending(): PendingPaymentsSummary;
 };
@@ -31,6 +33,14 @@ export function createPaymentStore(): PaymentStore {
 
     listAll() {
       return [...store.values()];
+    },
+
+    all() {
+      return [...store.values()];
+    },
+
+    findByStatus(status: PaymentStatus) {
+      return [...store.values()].filter((p) => p.status === status);
     },
 
     listPending() {
@@ -54,3 +64,5 @@ export function createPaymentStore(): PaymentStore {
     },
   };
 }
+
+export const paymentStore = createPaymentStore();

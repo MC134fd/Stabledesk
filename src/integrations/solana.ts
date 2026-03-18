@@ -1,4 +1,11 @@
-import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, PublicKey, LAMPORTS_PER_SOL, Keypair, Transaction } from '@solana/web3.js';
+import bs58 from 'bs58';
+
+export type SolanaClient = {
+  connection: Connection;
+  keypair: Keypair;
+  sendAndConfirm(tx: Transaction): Promise<string>;
+};
 
 export const solanaClient = {
   createConnection(rpcUrl: string): Connection {
@@ -20,3 +27,29 @@ export const solanaClient = {
     return lamports / LAMPORTS_PER_SOL;
   },
 };
+
+export function createSolanaClient(rpcUrl: string, keypairB58: string): SolanaClient {
+  const connection = new Connection(rpcUrl, 'confirmed');
+  const secretKey = bs58.decode(keypairB58);
+  const keypair = Keypair.fromSecretKey(secretKey);
+
+  return {
+    connection,
+    keypair,
+
+    async sendAndConfirm(tx: Transaction): Promise<string> {
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash('confirmed');
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = keypair.publicKey;
+      tx.partialSign(keypair);
+      const raw = tx.serialize();
+      const signature = await connection.sendRawTransaction(raw);
+      await connection.confirmTransaction(
+        { signature, blockhash, lastValidBlockHeight },
+        'confirmed',
+      );
+      return signature;
+    },
+  };
+}
