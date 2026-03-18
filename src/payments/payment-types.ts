@@ -1,10 +1,22 @@
-// TODO: Define all payment-related TypeScript types and enums.
-// - PaymentRequest: id, recipient, amount (USDC), memo, scheduledAt
-// - PaymentStatus: pending | processing | completed | failed
-// - PaymentRecord: full lifecycle record including txSignature and timestamps
-// - Ensure amounts are represented as bigint to avoid floating-point issues
+export type PaymentStatus = "pending" | "processing" | "completed" | "failed";
 
-export type PaymentPlaceholder = {
-  // TODO: replace with PaymentRequest, PaymentRecord, PaymentStatus
-  _placeholder: never;
-};
+export interface PaymentRequest {
+  recipient: string;
+  amountUsdc: bigint;
+  memo?: string;
+  scheduledAt?: Date;
+}
+
+export interface PaymentRecord {
+  id: string;
+  recipient: string;
+  /** Amount in micro-USDC (6 decimals) */
+  amountUsdc: bigint;
+  memo: string;
+  status: PaymentStatus;
+  createdAt: string;
+  updatedAt: string;
+  scheduledAt: string;
+  txSignature?: string;
+  failureReason?: string;
+}

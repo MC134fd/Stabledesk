@@ -1,0 +1,118 @@
+# StableDesk Kora Fee-Payer Configuration
+# This file configures the Kora node that relays transactions for the treasury agent.
+# The agent cannot interact with anything outside these rules — Kora enforces
+# a security perimeter at the signing layer.
+
+[kora]
+rate_limit = 100
+# payment_address = "<operator-usdc-ata>"  # Where USDC fees go
+
+[kora.cache]
+enabled = false
+default_ttl = 300
+account_ttl = 60
+
+[kora.enabled_methods]
+liveness = true
+estimate_transaction_fee = true
+get_supported_tokens = true
+sign_transaction = true
+sign_and_send_transaction = true
+transfer_transaction = true
+get_blockhash = true
+get_config = true
+get_payer_signer = true
+
+# ── Validation Rules ────────────────────────────────────────────
+# These are the treasury policy guardrails enforced at the infrastructure level.
+# Even if the agent has a bug, Kora prevents catastrophic actions.
+
+[validation]
+max_allowed_lamports = 100000000       # ~0.1 SOL max fee per transaction
+max_signatures = 10
+price_source = "Jupiter"               # "Mock" for devnet, "Jupiter" for mainnet
+allow_durable_transactions = false
+
+# Programs the treasury agent is allowed to call
+allowed_programs = [
+  "11111111111111111111111111111111",                   # System Program
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",      # SPL Token Program
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",     # Associated Token Account
+  "KLend2g3cP87ber8LQi2Hb89NVzs8TmWKkSKH3sXbQ4",     # Kamino Lending (klend)
+  "ComputeBudget111111111111111111111111111111",        # Compute Budget
+  "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",     # Memo Program
+]
+
+# Token mints that may appear in transaction instructions
+allowed_tokens = [
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",    # USDC (mainnet)
+  # "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr",  # EURC (uncomment for FX)
+  # "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",  # PYUSD (uncomment for multi-stable)
+]
+
+# Tokens accepted as fee payment to the Kora operator
+allowed_spl_paid_tokens = [
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",    # USDC
+]
+
+# Blocked accounts (OFAC sanctions, blocked counterparties)
+disallowed_accounts = [
+  # "Htp9MGP8Tig923ZFY7Qf2zzbMUmYneFRAhSp7vSg4wxV", # Example: Tornado Cash
+]
+
+# Fee payer permissions — what the Kora signer is allowed to do
+[validation.fee_payer_policy.system]
+allow_transfer = true
+allow_assign = true
+allow_create_account = true
+allow_allocate = true
+
+[validation.fee_payer_policy.system.nonce]
+allow_initialize = true
+allow_advance = true
+allow_authorize = false
+allow_withdraw = false
+
+[validation.fee_payer_policy.spl_token]
+allow_transfer = true
+allow_burn = false
+allow_close_account = true
+allow_approve = true
+allow_revoke = true
+allow_set_authority = false
+allow_mint_to = false
+allow_initialize_mint = false
+allow_initialize_account = true
+allow_initialize_multisig = false
+allow_freeze_account = false
+allow_thaw_account = false
+
+[validation.fee_payer_policy.token_2022]
+allow_transfer = false
+allow_burn = false
+allow_close_account = false
+allow_approve = false
+allow_revoke = false
+allow_set_authority = false
+allow_mint_to = false
+allow_freeze_account = false
+allow_thaw_account = false
+
+# ── Pricing ─────────────────────────────────────────────────────
+# The operator charges a margin on top of SOL gas costs, paid in USDC.
+# "free" = fully sponsored | "margin" = cost + % | "fixed" = fixed fee per tx
+
+[validation.price]
+type = "margin"
+margin = 0.1            # 10% margin above SOL cost
+
+[validation.token2022]
+blocked_mint_extensions = []
+blocked_account_extensions = []
+
+# ── Usage Limits ────────────────────────────────────────────────
+[kora.usage_limit]
+enabled = true
+cache_url = "redis://redis:6379"
+max_transactions = 1000         # Max transactions per wallet per day
+fallback_if_unavailable = true

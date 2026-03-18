@@ -1,10 +1,25 @@
-// TODO: Define and manage the treasury state data model.
-// - On-chain USDC balances (liquid, deployed, total)
-// - Kamino position details
-// - Pending payment obligations
-// - Last-updated timestamp and slot
-// - Provide a function to fetch/refresh state from chain
+export interface TreasuryState {
+  /** Liquid USDC in the treasury wallet (micro-USDC) */
+  liquidUsdc: bigint;
+  /** USDC deposited into Kamino (micro-USDC, includes accrued yield) */
+  kaminoDeposited: bigint;
+  /** Total USDC under management */
+  totalUsdc: bigint;
+  /** Pending outgoing payment obligations (micro-USDC) */
+  pendingObligations: bigint;
+  /** Last Solana slot when state was fetched */
+  lastUpdatedSlot: number;
+  /** ISO timestamp of last refresh */
+  lastUpdatedAt: string;
+}
 
-export const treasuryState = {
-  // TODO: implement TreasuryState type and fetch logic
-} as const;
+export function emptyState(): TreasuryState {
+  return {
+    liquidUsdc: 0n,
+    kaminoDeposited: 0n,
+    totalUsdc: 0n,
+    pendingObligations: 0n,
+    lastUpdatedSlot: 0,
+    lastUpdatedAt: new Date().toISOString(),
+  };
+}

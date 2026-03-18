@@ -1,9 +1,6 @@
-// TODO: CLI entry point to start the treasury scheduler process.
-// - Load env config and validate
-// - Initialize all integrations
-// - Start the scheduler and keep the process alive
-// - Handle SIGINT / SIGTERM for graceful shutdown
+import { start } from "../index.js";
 
-export const runScheduler = async (): Promise<void> => {
-  // TODO: implement
-};
+start().catch((err) => {
+  console.error("Fatal:", err);
+  process.exit(1);
+});

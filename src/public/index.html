@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StableDesk — Treasury Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --bg-root: #0a0e14;
+  --bg-panel: #0f1319;
+  --bg-panel-raised: #141a22;
+  --bg-input: #0c1017;
+  --border: #1c2430;
+  --border-focus: #2dd4bf40;
+  --text-primary: #e2e8f0;
+  --text-secondary: #8b95a5;
+  --text-muted: #4a5568;
+  --accent: #2dd4bf;
+  --accent-dim: #2dd4bf30;
+  --accent-glow: #2dd4bf18;
+  --green: #34d399;
+  --green-dim: #34d39925;
+  --yellow: #fbbf24;
+  --yellow-dim: #fbbf2425;
+  --blue: #60a5fa;
+  --blue-dim: #60a5fa25;
+  --red: #f87171;
+  --red-dim: #f8717125;
+  --orange: #fb923c;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --radius: 6px;
+  --transition: 180ms ease;
+}
+
+html { font-size: 14px; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-root);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scanline overlay for terminal feel */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.03) 2px,
+    rgba(0,0,0,0.03) 4px
+  );
+}
+
+/* ─── HEADER ─── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.header-left { display: flex; align-items: center; gap: 16px; }
+.logo {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--accent);
+  letter-spacing: -0.5px;
+  text-transform: uppercase;
+}
+.logo span { color: var(--text-muted); font-weight: 400; }
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg-root);
+}
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: background var(--transition);
+}
+.status-dot.online {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+.status-dot.offline { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.header-right { display: flex; align-items: center; gap: 12px; }
+.refresh-timer {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.btn-refresh {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  background: var(--bg-root);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-refresh:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+.btn-refresh.loading svg { animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── LAYOUT ─── */
+.dashboard {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto 1fr;
+  gap: 1px;
+  padding: 1px;
+  background: var(--border);
+  min-height: calc(100vh - 49px);
+}
+
+.panel {
+  background: var(--bg-panel);
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.panel-title {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+}
+.panel-label {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+/* ─── TREASURY OVERVIEW ─── */
+.overview { grid-column: 1; grid-row: 1; }
+.overview-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 24px;
+  align-items: start;
+}
+.metrics { display: flex; flex-direction: column; gap: 14px; }
+.metric {
+  padding: 12px 14px;
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color var(--transition);
+}
+.metric:hover { border-color: var(--accent-dim); }
+.metric-label {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.metric-value {
+  font-family: var(--font-mono);
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.5px;
+}
+.metric-value.accent { color: var(--accent); }
+.metric-sub {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Ring chart */
+.ring-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.ring-chart { position: relative; width: 160px; height: 160px; }
+.ring-chart svg { transform: rotate(-90deg); }
+.ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(0deg);
+}
+.ring-center-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.ring-center-value {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.ring-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ─── POLICY DECISION ─── */
+.policy { grid-column: 2; grid-row: 1; }
+.decision-card {
+  padding: 16px;
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--accent);
+}
+.decision-type {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+.decision-type.deposit { color: var(--green); }
+.decision-type.withdraw { color: var(--orange); }
+.decision-type.none { color: var(--text-muted); }
+.decision-reason {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.decision-meta {
+  display: flex;
+  gap: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.decision-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.decision-meta-item .label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+.decision-meta-item .value {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.slot-info {
+  margin-top: 16px;
+  display: flex;
+  gap: 20px;
+}
+.slot-info-item {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+.slot-info-item strong {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* ─── PAYMENTS ─── */
+.payments { grid-column: 1 / -1; grid-row: 2; }
+.payments-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+.payment-filters {
+  display: flex;
+  gap: 4px;
+}
+.filter-btn {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.filter-btn:hover { color: var(--text-secondary); border-color: var(--text-muted); }
+.filter-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Payment form */
+.payment-form {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.form-group label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+.form-group input {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  padding: 6px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition);
+  width: 100%;
+}
+.form-group input::placeholder { color: var(--text-muted); }
+.form-group input:focus { border-color: var(--accent); }
+.form-group.recipient { min-width: 280px; }
+.form-group.amount { width: 120px; }
+.form-group.memo { width: 160px; }
+
+.btn-send {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 6px 16px;
+  background: var(--accent);
+  color: var(--bg-root);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.btn-send:hover { filter: brightness(1.15); transform: translateY(-1px); }
+.btn-send:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+/* Table */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+thead {
+  background: var(--bg-panel-raised);
+  position: sticky;
+  top: 0;
+}
+th {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+td {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--accent-glow); }
+td.addr {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+td.amount {
+  color: var(--text-primary);
+  font-weight: 500;
+  text-align: right;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 3px;
+}
+.status-pill.pending { background: var(--yellow-dim); color: var(--yellow); }
+.status-pill.processing { background: var(--blue-dim); color: var(--blue); }
+.status-pill.completed { background: var(--green-dim); color: var(--green); }
+.status-pill.failed { background: var(--red-dim); color: var(--red); }
+
+.btn-process {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-process:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+.empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* ─── AUDIT LOG ─── */
+.audit { grid-column: 1 / -1; grid-row: 3; overflow: hidden; display: flex; flex-direction: column; }
+.audit-scroll {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 360px;
+}
+.audit-scroll::-webkit-scrollbar { width: 4px; }
+.audit-scroll::-webkit-scrollbar-track { background: transparent; }
+.audit-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.audit-entry {
+  display: grid;
+  grid-template-columns: 140px 200px 70px 1fr;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  align-items: center;
+  transition: background var(--transition);
+}
+.audit-entry:hover { background: var(--accent-glow); }
+.audit-time { color: var(--text-muted); }
+.audit-action { color: var(--text-primary); font-weight: 500; }
+.audit-result {
+  font-size: 0.64rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.audit-result.success { color: var(--green); }
+.audit-result.failure { color: var(--red); }
+.audit-detail {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── TOAST ─── */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  animation: toast-in 0.3s ease;
+  max-width: 360px;
+}
+.toast.error { border-color: var(--red); color: var(--red); }
+.toast.success { border-color: var(--green); color: var(--green); }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── LOADING STATES ─── */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-panel-raised) 25%, var(--border) 50%, var(--bg-panel-raised) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 3px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 900px) {
+  .dashboard { grid-template-columns: 1fr; }
+  .overview { grid-column: 1; }
+  .policy { grid-column: 1; grid-row: 2; }
+  .payments { grid-column: 1; grid-row: 3; }
+  .audit { grid-column: 1; grid-row: 4; }
+  .overview-grid { grid-template-columns: 1fr; }
+  .payments-top { flex-direction: column; }
+  .payment-form { flex-wrap: wrap; }
+  .audit-entry { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-left">
+    <div class="logo">StableDesk <span>Treasury Console</span></div>
+    <div class="status-badge">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Connecting...</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="refresh-timer" id="refreshTimer">30s</span>
+    <button class="btn-refresh" id="btnRefresh" onclick="refreshAll()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+      Refresh
+    </button>
+  </div>
+</header>
+
+<!-- DASHBOARD GRID -->
+<main class="dashboard">
+
+  <!-- TREASURY OVERVIEW -->
+  <section class="panel overview">
+    <div class="panel-header">
+      <span class="panel-title">Treasury Overview</span>
+      <span class="panel-label" id="lastUpdated">—</span>
+    </div>
+    <div class="overview-grid">
+      <div class="metrics">
+        <div class="metric">
+          <div class="metric-label">Liquid USDC</div>
+          <div class="metric-value" id="liquidUsdc">—</div>
+          <div class="metric-sub">Available in wallet</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Kamino Deposited</div>
+          <div class="metric-value" id="kaminoDeposited">—</div>
+          <div class="metric-sub">Earning yield in Kamino Lend</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Total AUM</div>
+          <div class="metric-value accent" id="totalUsdc">—</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Pending Obligations</div>
+          <div class="metric-value" id="pendingObligations">—</div>
+          <div class="metric-sub">Queued payment commitments</div>
+        </div>
+      </div>
+      <div class="ring-container">
+        <div class="ring-chart">
+          <svg width="160" height="160" viewBox="0 0 160 160">
+            <circle cx="80" cy="80" r="62" fill="none" stroke="var(--border)" stroke-width="14"/>
+            <circle id="ringLiquid" cx="80" cy="80" r="62" fill="none" stroke="var(--accent)" stroke-width="14"
+              stroke-dasharray="0 389.56" stroke-linecap="round" style="transition: stroke-dasharray 0.8s ease"/>
+            <circle id="ringKamino" cx="80" cy="80" r="62" fill="none" stroke="var(--green)" stroke-width="14"
+              stroke-dasharray="0 389.56" stroke-dashoffset="0" stroke-linecap="round" style="transition: all 0.8s ease"/>
+          </svg>
+          <div class="ring-center">
+            <span class="ring-center-label">Alloc</span>
+            <span class="ring-center-value" id="ringPercent">—</span>
+          </div>
+        </div>
+        <div class="ring-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div> Liquid</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Kamino</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--border)"></div> Unallocated</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- POLICY DECISION -->
+  <section class="panel policy">
+    <div class="panel-header">
+      <span class="panel-title">Policy Engine</span>
+      <span class="panel-label">Last Decision</span>
+    </div>
+    <div class="decision-card" id="decisionCard">
+      <div class="decision-type none" id="decisionType">No data</div>
+      <div class="decision-reason" id="decisionReason">Waiting for scheduler tick...</div>
+      <div class="decision-meta">
+        <div class="decision-meta-item">
+          <span class="label">Payments</span>
+          <span class="value" id="decisionPayments">—</span>
+        </div>
+        <div class="decision-meta-item">
+          <span class="label">Available</span>
+          <span class="value" id="decisionAvailable">—</span>
+        </div>
+      </div>
+    </div>
+    <div class="slot-info">
+      <div class="slot-info-item">Slot: <strong id="slotNumber">—</strong></div>
+      <div class="slot-info-item">Updated: <strong id="slotTime">—</strong></div>
+    </div>
+  </section>
+
+  <!-- PAYMENTS -->
+  <section class="panel payments">
+    <div class="panel-header">
+      <span class="panel-title">Payments</span>
+    </div>
+    <div class="payments-top">
+      <div class="payment-filters">
+        <button class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">All</button>
+        <button class="filter-btn" data-filter="pending" onclick="setFilter('pending',this)">Pending</button>
+        <button class="filter-btn" data-filter="processing" onclick="setFilter('processing',this)">Processing</button>
+        <button class="filter-btn" data-filter="completed" onclick="setFilter('completed',this)">Completed</button>
+        <button class="filter-btn" data-filter="failed" onclick="setFilter('failed',this)">Failed</button>
+      </div>
+      <form class="payment-form" id="paymentForm" onsubmit="submitPayment(event)">
+        <div class="form-group recipient">
+          <label>Recipient</label>
+          <input type="text" id="payRecipient" placeholder="Solana address..." required>
+        </div>
+        <div class="form-group amount">
+          <label>USDC</label>
+          <input type="number" id="payAmount" placeholder="0.00" step="0.01" min="0.01" required>
+        </div>
+        <div class="form-group memo">
+          <label>Memo</label>
+          <input type="text" id="payMemo" placeholder="Optional...">
+        </div>
+        <button type="submit" class="btn-send" id="btnSend">Send</button>
+      </form>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Recipient</th>
+            <th style="text-align:right">Amount</th>
+            <th>Memo</th>
+            <th>Created</th>
+            <th>Tx</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="paymentsBody">
+          <tr><td colspan="7" class="empty-state">No payments yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- AUDIT LOG -->
+  <section class="panel audit">
+    <div class="panel-header">
+      <span class="panel-title">Audit Log</span>
+      <span class="panel-label" id="auditCount">0 events</span>
+    </div>
+    <div class="audit-scroll" id="auditScroll">
+      <div class="empty-state">No audit events</div>
+    </div>
+  </section>
+
+</main>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ─── STATE ───
+let currentFilter = 'all';
+let refreshCountdown = 30;
+let refreshInterval = null;
+let isLoading = false;
+
+// ─── API HELPERS ───
+const API = '';
+
+async function api(path, opts = {}) {
+  const res = await fetch(`${API}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+function truncAddr(addr) {
+  if (!addr || addr.length <= 12) return addr || '—';
+  return addr.slice(0, 4) + '...' + addr.slice(-4);
+}
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + fmtTime(iso);
+}
+
+function relativeTime(iso) {
+  if (!iso) return '—';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  return fmtDate(iso);
+}
+
+// ─── TOAST ───
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 3500);
+}
+
+// ─── CONNECTION STATUS ───
+async function checkHealth() {
+  try {
+    await api('/health');
+    document.getElementById('statusDot').className = 'status-dot online';
+    document.getElementById('statusText').textContent = 'Connected';
+    return true;
+  } catch {
+    document.getElementById('statusDot').className = 'status-dot offline';
+    document.getElementById('statusText').textContent = 'Offline';
+    return false;
+  }
+}
+
+// ─── TREASURY STATE ───
+const CIRC = 2 * Math.PI * 62; // ring circumference
+
+async function loadState() {
+  try {
+    const s = await api('/state');
+
+    document.getElementById('liquidUsdc').textContent = s.liquidUsdcFormatted || '0.000000 USDC';
+    document.getElementById('kaminoDeposited').textContent = s.kaminoDepositedFormatted || '0.000000 USDC';
+    document.getElementById('totalUsdc').textContent = s.totalUsdcFormatted || '0.000000 USDC';
+    document.getElementById('pendingObligations').textContent =
+      s.pendingObligations === '0' ? '0.000000 USDC' : formatMicroUsdc(s.pendingObligations);
+    document.getElementById('lastUpdated').textContent = relativeTime(s.lastUpdatedAt);
+
+    // Ring chart
+    const total = BigInt(s.totalUsdc || '0');
+    const liquid = BigInt(s.liquidUsdc || '0');
+    const kamino = BigInt(s.kaminoDeposited || '0');
+
+    if (total > 0n) {
+      const liquidPct = Number(liquid * 10000n / total) / 100;
+      const kaminoPct = Number(kamino * 10000n / total) / 100;
+
+      const liquidArc = (liquidPct / 100) * CIRC;
+      const kaminoArc = (kaminoPct / 100) * CIRC;
+
+      document.getElementById('ringLiquid').setAttribute('stroke-dasharray', `${liquidArc} ${CIRC}`);
+
+      const kaminoEl = document.getElementById('ringKamino');
+      kaminoEl.setAttribute('stroke-dasharray', `${kaminoArc} ${CIRC}`);
+      kaminoEl.setAttribute('stroke-dashoffset', `${-liquidArc}`);
+
+      document.getElementById('ringPercent').textContent = `${kaminoPct.toFixed(0)}%`;
+    } else {
+      document.getElementById('ringLiquid').setAttribute('stroke-dasharray', `0 ${CIRC}`);
+      document.getElementById('ringKamino').setAttribute('stroke-dasharray', `0 ${CIRC}`);
+      document.getElementById('ringPercent').textContent = '—';
+    }
+
+    // Policy decision
+    const d = s.lastDecision;
+    if (d) {
+      const typeEl = document.getElementById('decisionType');
+      typeEl.textContent = d.rebalance?.type === 'none'
+        ? 'Hold — No Rebalance'
+        : d.rebalance?.type === 'deposit'
+        ? `Deposit ${formatMicroUsdc(d.rebalance.amountUsdc)}`
+        : d.rebalance?.type === 'withdraw'
+        ? `Withdraw ${formatMicroUsdc(d.rebalance.amountUsdc)}`
+        : 'Unknown';
+      typeEl.className = `decision-type ${d.rebalance?.type || 'none'}`;
+
+      document.getElementById('decisionReason').textContent = d.reason || '—';
+      document.getElementById('decisionPayments').textContent = d.canProcessPayments ? 'Enabled' : 'Blocked';
+      document.getElementById('decisionPayments').style.color = d.canProcessPayments ? 'var(--green)' : 'var(--red)';
+      document.getElementById('decisionAvailable').textContent =
+        d.availableForPayments ? formatMicroUsdc(d.availableForPayments) : '—';
+    }
+
+    document.getElementById('slotNumber').textContent = s.lastUpdatedSlot?.toLocaleString() || '—';
+    document.getElementById('slotTime').textContent = relativeTime(s.lastUpdatedAt);
+  } catch (e) {
+    console.error('Failed to load state:', e);
+  }
+}
+
+function formatMicroUsdc(raw) {
+  if (!raw && raw !== 0 && raw !== '0') return '—';
+  const n = BigInt(raw);
+  const whole = n / 1000000n;
+  const frac = (n % 1000000n).toString().padStart(6, '0');
+  return `${whole.toLocaleString()}.${frac} USDC`;
+}
+
+// ─── PAYMENTS ───
+async function loadPayments() {
+  try {
+    const url = currentFilter === 'all' ? '/payments' : `/payments?status=${currentFilter}`;
+    const payments = await api(url);
+
+    const tbody = document.getElementById('paymentsBody');
+    if (!payments.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No payments found</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = payments.map(p => `
+      <tr>
+        <td><span class="status-pill ${p.status}">${p.status}</span></td>
+        <td class="addr" title="${p.recipient}">${truncAddr(p.recipient)}</td>
+        <td class="amount">${p.amountFormatted || formatMicroUsdc(p.amountUsdc)}</td>
+        <td>${p.memo || '—'}</td>
+        <td>${fmtDate(p.createdAt)}</td>
+        <td class="addr" title="${p.txSignature || ''}">${p.txSignature ? truncAddr(p.txSignature) : '—'}</td>
+        <td>${p.status === 'pending' ? `<button class="btn-process" onclick="processPayment('${p.id}')">Process</button>` : ''}</td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    console.error('Failed to load payments:', e);
+  }
+}
+
+function setFilter(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadPayments();
+}
+
+async function submitPayment(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btnSend');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  try {
+    const recipient = document.getElementById('payRecipient').value.trim();
+    const amount = parseFloat(document.getElementById('payAmount').value);
+    const memo = document.getElementById('payMemo').value.trim();
+    const amountUsdc = Math.floor(amount * 1_000_000).toString();
+
+    await api('/payments', {
+      method: 'POST',
+      body: JSON.stringify({ recipient, amountUsdc, memo: memo || undefined }),
+    });
+
+    toast('Payment created', 'success');
+    document.getElementById('paymentForm').reset();
+    loadPayments();
+    loadAudit();
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send';
+  }
+}
+
+async function processPayment(id) {
+  try {
+    await api(`/payments/${id}/process`, { method: 'POST' });
+    toast('Payment processing initiated', 'success');
+    loadPayments();
+    loadAudit();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+// ─── AUDIT LOG ───
+async function loadAudit() {
+  try {
+    const events = await api('/audit');
+    document.getElementById('auditCount').textContent = `${events.length} events`;
+
+    const container = document.getElementById('auditScroll');
+    if (!events.length) {
+      container.innerHTML = '<div class="empty-state">No audit events</div>';
+      return;
+    }
+
+    container.innerHTML = events.slice().reverse().map(ev => {
+      const paramsStr = Object.entries(ev.params || {})
+        .map(([k, v]) => `${k}=${typeof v === 'string' && v.length > 20 ? truncAddr(v) : v}`)
+        .join(' ');
+      return `
+        <div class="audit-entry">
+          <span class="audit-time">${fmtDate(ev.timestamp)}</span>
+          <span class="audit-action">${ev.action}</span>
+          <span class="audit-result ${ev.result}">${ev.result}</span>
+          <span class="audit-detail" title="${paramsStr}">${paramsStr || '—'}</span>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    console.error('Failed to load audit:', e);
+  }
+}
+
+// ─── REFRESH CYCLE ───
+async function refreshAll() {
+  if (isLoading) return;
+  isLoading = true;
+
+  const btn = document.getElementById('btnRefresh');
+  btn.classList.add('loading');
+
+  const online = await checkHealth();
+  if (online) {
+    await Promise.all([loadState(), loadPayments(), loadAudit()]);
+  }
+
+  btn.classList.remove('loading');
+  isLoading = false;
+  refreshCountdown = 30;
+}
+
+function startRefreshTimer() {
+  refreshCountdown = 30;
+  if (refreshInterval) clearInterval(refreshInterval);
+  refreshInterval = setInterval(() => {
+    refreshCountdown--;
+    document.getElementById('refreshTimer').textContent = `${refreshCountdown}s`;
+    if (refreshCountdown <= 0) {
+      refreshAll();
+    }
+  }, 1000);
+}
+
+// ─── INIT ───
+(async function init() {
+  await refreshAll();
+  startRefreshTimer();
+})();
+</script>
+</body>
+</html>
