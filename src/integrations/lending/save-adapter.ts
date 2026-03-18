@@ -1,7 +1,7 @@
 import { Transaction, PublicKey } from "@solana/web3.js";
 import type { SolanaClient } from "../solana.js";
 import type { LendingAdapter, LendingPosition, ProtocolId } from "./types.js";
-import { getEnabledStablecoins, getStablecoin } from "../../config/stablecoins.js";
+import { getEnabledStablecoins, getStablecoin, rawToHuman } from "../../config/stablecoins.js";
 import { createLogger } from "../../audit/logger.js";
 
 const log = createLogger("save");
@@ -34,8 +34,6 @@ async function loadSdk() {
   }
 }
 
-/** Save/Solend program ID (mainnet) */
-const SAVE_PROGRAM_ID = "So1endDq2YkqhipRh3WViPa8hFvz7yJdFptquMheVo6";
 /** Main pool address */
 const MAIN_POOL = "7XawhbbxtsRcQA8KTkHT9f9nc6d69UwqCDh6U5EEbEmX";
 
@@ -83,16 +81,22 @@ export function createSaveAdapter(
       const positions: LendingPosition[] = [];
       const stables = getEnabledStablecoins();
 
+      // Fetch obligation once — it covers all tokens for this wallet
+      let obligation: any = null;
+      try {
+        obligation = await market.fetchObligationByWallet(
+          solana.keypair.publicKey.toBase58(),
+        );
+      } catch {
+        // No obligation exists for this wallet
+      }
+      if (!obligation) return positions;
+
       for (const stable of stables) {
         const reserve = findReserve(stable.symbol);
         if (!reserve) continue;
 
         try {
-          const obligation = await market.fetchObligationByWallet(
-            solana.keypair.publicKey.toBase58(),
-          );
-          if (!obligation) continue;
-
           const deposit = obligation.deposits?.find(
             (d: any) => d.depositReserve?.toBase58?.() === reserve.config?.address ||
               d.mintAddress === stable.mint,
@@ -114,7 +118,7 @@ export function createSaveAdapter(
             supplyApy: apy,
           });
         } catch {
-          // No obligation for this token
+          // No deposit for this token
         }
       }
 
@@ -137,7 +141,7 @@ export function createSaveAdapter(
 
       const action = await SolendAction.buildDepositTxns(
         solana.connection,
-        Number(amount) / (10 ** stable.decimals),
+        rawToHuman(amount, stable.decimals),
         tokenSymbol,
         solana.keypair.publicKey,
         "production",
@@ -165,7 +169,7 @@ export function createSaveAdapter(
 
       const action = await SolendAction.buildWithdrawTxns(
         solana.connection,
-        Number(amount) / (10 ** stable.decimals),
+        rawToHuman(amount, stable.decimals),
         tokenSymbol,
         solana.keypair.publicKey,
         "production",

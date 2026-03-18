@@ -12,6 +12,9 @@ export interface AuditEvent {
   detail?: string;
 }
 
+/** Maximum number of audit events to keep in memory */
+const MAX_EVENTS = 10_000;
+
 const events: AuditEvent[] = [];
 let counter = 0;
 
@@ -33,6 +36,12 @@ export const auditService = {
       detail,
     };
     events.push(event);
+
+    // Evict oldest events when capacity is exceeded
+    if (events.length > MAX_EVENTS) {
+      events.splice(0, events.length - MAX_EVENTS);
+    }
+
     log.info(`[${result}] ${action}`, { eventId: event.id, ...params });
     return event;
   },

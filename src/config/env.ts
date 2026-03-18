@@ -12,6 +12,8 @@ export interface Env {
   SCHEDULER_INTERVAL_SECONDS: number;
   LOG_LEVEL: string;
   PORT: number;
+  /** API key for write operations (POST /payments). Empty = no auth required. */
+  API_KEY: string;
 }
 
 function required(key: string): string {
@@ -21,7 +23,7 @@ function required(key: string): string {
 }
 
 function optional(key: string, fallback: string): string {
-  return process.env[key] || fallback;
+  return process.env[key] ?? fallback;
 }
 
 function intOr(key: string, fallback: number): number {
@@ -45,5 +47,6 @@ export function loadEnv(): Env {
     SCHEDULER_INTERVAL_SECONDS: intOr("SCHEDULER_INTERVAL_SECONDS", 60),
     LOG_LEVEL: optional("LOG_LEVEL", "info"),
     PORT: intOr("PORT", 3000),
+    API_KEY: optional("API_KEY", ""),
   };
 }

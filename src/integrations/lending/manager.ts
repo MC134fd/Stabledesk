@@ -78,7 +78,7 @@ export function createLendingManager(adapters: LendingAdapter[]): LendingManager
     adapters: adapterMap,
 
     async initializeAll() {
-      const results = await Promise.allSettled(
+      await Promise.allSettled(
         adapters.map(async (a) => {
           try {
             await a.initialize();

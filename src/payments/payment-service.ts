@@ -21,6 +21,11 @@ export interface PaymentServiceDeps {
 export function createPaymentService(deps: PaymentServiceDeps) {
   return {
     createPayment(req: PaymentRequest): PaymentRecord {
+      // Validate amount is positive
+      if (req.amountUsdc <= 0n) {
+        throw new Error("Payment amount must be positive");
+      }
+
       // Validate against disallowed recipients
       if (deps.policy.disallowedRecipients.includes(req.recipient)) {
         throw new Error(`Recipient ${req.recipient} is blocked by policy`);
@@ -60,6 +65,17 @@ export function createPaymentService(deps: PaymentServiceDeps) {
       if (!record) throw new Error(`Payment ${id} not found`);
       if (record.status === "completed") return record;
       if (record.status === "processing") return record; // idempotent
+
+      // Re-validate liquidity before processing — state may have changed since creation
+      const recheck = canApprovePayment(record.amountUsdc, deps.getState(), deps.policy);
+      if (!recheck.approved) {
+        log.warn("Payment deferred — liquidity changed since creation", {
+          id,
+          reason: recheck.reason,
+        });
+        // Leave as pending so it retries next tick (don't mark as failed)
+        return record;
+      }
 
       paymentStore.updateStatus(id, "processing");
 

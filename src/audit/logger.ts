@@ -1,14 +1,23 @@
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 } as const;
 type LogLevel = keyof typeof LOG_LEVELS;
 
-const currentLevel = (): LogLevel => {
+// Cache the log level at module load
+let cachedLevel: LogLevel | null = null;
+
+function resolveLevel(): LogLevel {
+  if (cachedLevel) return cachedLevel;
   const envLevel = process.env.LOG_LEVEL?.toLowerCase();
-  if (envLevel && envLevel in LOG_LEVELS) return envLevel as LogLevel;
-  return "info";
-};
+  cachedLevel = (envLevel && envLevel in LOG_LEVELS) ? envLevel as LogLevel : "info";
+  return cachedLevel;
+}
+
+/** Allow runtime level changes (e.g., from config reload) */
+export function setLogLevel(level: LogLevel): void {
+  cachedLevel = level;
+}
 
 function log(level: LogLevel, module: string, message: string, data?: Record<string, unknown>) {
-  if (LOG_LEVELS[level] < LOG_LEVELS[currentLevel()]) return;
+  if (LOG_LEVELS[level] < LOG_LEVELS[resolveLevel()]) return;
   const entry = {
     timestamp: new Date().toISOString(),
     level,

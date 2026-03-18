@@ -1,4 +1,4 @@
-import { Transaction } from "@solana/web3.js";
+import { PublicKey, Transaction } from "@solana/web3.js";
 // Use direct import path to avoid ESM resolution issues with the kit plugin
 import { KoraClient as KoraRpcClient } from "@solana/kora/dist/src/client.js";
 import type { SolanaClient } from "./solana.js";
@@ -36,6 +36,8 @@ export function createKoraClient(
 ): KoraClient {
   const enabled = !!config?.endpoint;
   let rpcClient: KoraRpcClient | null = null;
+  /** Cached Kora fee-payer public key */
+  let payerKey: PublicKey | null = null;
 
   if (enabled && config) {
     rpcClient = new KoraRpcClient({
@@ -48,6 +50,18 @@ export function createKoraClient(
     log.warn("Kora endpoint not configured — using direct signing (requires SOL for gas)");
   }
 
+  /** Fetch and cache the Kora fee-payer public key */
+  async function getPayerKey(): Promise<PublicKey> {
+    if (payerKey) return payerKey;
+    if (!rpcClient) throw new Error("Kora not configured");
+
+    const result = await rpcClient.getPayerSigner();
+    const payerStr = (result as any)?.payer ?? (result as any)?.signer ?? String(result);
+    payerKey = new PublicKey(payerStr);
+    log.info("Kora payer key fetched", { payer: payerKey.toBase58() });
+    return payerKey;
+  }
+
   return {
     enabled,
 
@@ -58,14 +72,27 @@ export function createKoraClient(
       }
 
       // Kora flow:
-      // 1. Set blockhash and partially sign with treasury key
-      // 2. Serialize to base64 (without requiring all signatures)
-      // 3. Send to Kora's signAndSendTransaction — Kora co-signs as fee payer
+      // 1. Fetch fee-payer key from Kora (cached after first call)
+      // 2. Set Kora's key as fee-payer so the treasury never needs SOL
+      // 3. Partially sign with treasury key
+      // 4. Send to Kora for co-signing and submission
       const { blockhash, lastValidBlockHeight } =
         await solana.connection.getLatestBlockhash("confirmed");
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = solana.keypair.publicKey;
 
+      // Set fee payer to Kora's signer, not the treasury wallet
+      try {
+        const payer = await getPayerKey();
+        tx.feePayer = payer;
+      } catch (e) {
+        // If we can't fetch the payer key, fall back to treasury as fee payer
+        // Kora server may still rewrite it during co-signing
+        log.warn("Could not fetch Kora payer key, using treasury as feePayer", {
+          error: String(e),
+        });
+        tx.feePayer = solana.keypair.publicKey;
+      }
+
+      tx.recentBlockhash = blockhash;
       tx.partialSign(solana.keypair);
       const serialized = tx.serialize({ requireAllSignatures: false });
       const encoded = Buffer.from(serialized).toString("base64");

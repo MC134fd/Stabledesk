@@ -1,7 +1,7 @@
-import { Transaction, PublicKey, TransactionInstruction } from "@solana/web3.js";
+import { Transaction, PublicKey } from "@solana/web3.js";
 import type { SolanaClient } from "../solana.js";
 import type { LendingAdapter, LendingPosition, ProtocolId } from "./types.js";
-import { getEnabledStablecoins, getStablecoin } from "../../config/stablecoins.js";
+import { getEnabledStablecoins, getStablecoin, rawToHuman } from "../../config/stablecoins.js";
 import { createLogger } from "../../audit/logger.js";
 
 const log = createLogger("marginfi");
@@ -63,9 +63,8 @@ export function createMarginfiAdapter(solana: SolanaClient): LendingAdapter {
     if (!MarginfiClient) throw new Error("marginfi SDK not installed. Run: npm install @mrgnlabs/marginfi-client-v2 @mrgnlabs/mrgn-common");
 
     // Create a proper NodeWallet from the keypair (per docs)
-    const wallet = NodeWallet
-      ? new NodeWallet(solana.keypair)
-      : { publicKey: solana.keypair.publicKey, signTransaction: async (tx: any) => tx, signAllTransactions: async (txs: any) => txs };
+    if (!NodeWallet) throw new Error("@mrgnlabs/mrgn-common not installed. Run: npm install @mrgnlabs/mrgn-common");
+    const wallet = new NodeWallet(solana.keypair);
 
     const config = getConfig?.("production") ?? { programId: new PublicKey(MARGINFI_PROGRAM_ID) };
     client = await MarginfiClient.fetch(config, wallet, solana.connection);
@@ -176,7 +175,7 @@ export function createMarginfiAdapter(solana: SolanaClient): LendingAdapter {
       }
       if (!bank) throw new Error(`marginfi: no bank found for ${tokenSymbol}`);
 
-      const humanAmount = Number(amount) / (10 ** stable.decimals);
+      const humanAmount = rawToHuman(amount, stable.decimals);
 
       // If no marginfi account exists, create one first
       if (!acct) {
@@ -213,7 +212,7 @@ export function createMarginfiAdapter(solana: SolanaClient): LendingAdapter {
       }
       if (!bank) throw new Error(`marginfi: no bank found for ${tokenSymbol}`);
 
-      const humanAmount = Number(amount) / (10 ** stable.decimals);
+      const humanAmount = rawToHuman(amount, stable.decimals);
 
       // Use the account's withdraw instruction builder (makeWithdrawIx)
       const withdrawIxs = await acct.makeWithdrawIx(humanAmount, bank.address);

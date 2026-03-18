@@ -13,6 +13,7 @@ import {
   type LendingAdapter,
 } from "./integrations/lending/index.js";
 import { createScheduler } from "./core/scheduler.js";
+import { emptyState } from "./core/treasury-state.js";
 import { createPaymentService } from "./payments/payment-service.js";
 import { createApi } from "./api.js";
 import { createLogger } from "./audit/logger.js";
@@ -57,7 +58,7 @@ export async function start() {
   // Save / Solend (available if SDK is installed)
   adapters.push(createSaveAdapter(solana));
 
-  // Jupiter Lend (uses REST API, always available)
+  // Jupiter Lend (available if SDK is installed)
   adapters.push(createJupLendAdapter(solana));
 
   const lendingManager = createLendingManager(adapters);
@@ -67,16 +68,20 @@ export async function start() {
     log.warn("Some lending adapters failed to initialize", { error: String(err) });
   });
 
-  // 6. Payment service
-  let scheduler: ReturnType<typeof createScheduler>;
+  // 6. Scheduler (declared first so payment service can reference it safely)
+  //    Use a lazy getter to avoid TDZ issues — getState returns emptyState
+  //    until the scheduler's first tick completes.
+  let scheduler: ReturnType<typeof createScheduler> | null = null;
+
+  // 7. Payment service
   const paymentService = createPaymentService({
     usdc,
     kora,
-    getState: () => scheduler.getState(),
+    getState: () => scheduler?.getState() ?? emptyState(),
     policy: defaultPolicy,
   });
 
-  // 7. Scheduler (refresh → evaluate → rebalance → process)
+  // 8. Scheduler (refresh → evaluate → rebalance → process)
   scheduler = createScheduler({
     solana,
     tokenClient,
@@ -87,12 +92,13 @@ export async function start() {
     intervalSeconds: env.SCHEDULER_INTERVAL_SECONDS,
   });
 
-  // 8. REST API
+  // 9. REST API
   const api = createApi({
-    getState: () => scheduler.getState(),
-    getLastDecision: () => scheduler.getLastDecision(),
+    getState: () => scheduler!.getState(),
+    getLastDecision: () => scheduler!.getLastDecision(),
     lendingManager,
     paymentService,
+    apiKey: env.API_KEY || undefined,
   });
 
   // Start scheduler
@@ -103,14 +109,23 @@ export async function start() {
     log.info(`StableDesk API running on http://localhost:${info.port}`);
     log.info(`Lending adapters: ${adapters.map((a) => a.name).join(", ")}`);
     log.info(`Supported tokens: ${lendingManager.allSupportedTokens().join(", ")}`);
+    if (env.API_KEY) {
+      log.info("API key authentication enabled for write operations");
+    } else {
+      log.warn("No API_KEY set — write endpoints are unauthenticated");
+    }
   });
 
-  // Graceful shutdown
+  // Graceful shutdown — stop scheduler and wait for server to close
   const shutdown = () => {
     log.info("Shutting down...");
-    scheduler.stop();
-    server.close();
-    process.exit(0);
+    scheduler!.stop();
+    server.close(() => {
+      log.info("Server closed");
+      process.exit(0);
+    });
+    // Force exit after 10s if server doesn't close cleanly
+    setTimeout(() => process.exit(0), 10_000).unref();
   };
 
   process.on("SIGINT", shutdown);

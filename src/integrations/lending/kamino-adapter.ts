@@ -90,6 +90,12 @@ export function createKaminoAdapter(
       const positions: LendingPosition[] = [];
       const stables = getEnabledStablecoins();
 
+      // Fetch slot once for all APY calculations
+      let currentSlot = 0n;
+      try {
+        currentSlot = await rpc.getSlot({ commitment: "confirmed" }).send();
+      } catch { /* slot stays 0 */ }
+
       for (const stable of stables) {
         const reserve = m.getReserveBySymbol(stable.symbol);
         if (!reserve) continue;
@@ -100,8 +106,7 @@ export function createKaminoAdapter(
 
         let apy = 0;
         try {
-          const slot = await rpc.getSlot({ commitment: "confirmed" }).send();
-          apy = reserve.totalSupplyAPY(slot) ?? 0;
+          apy = reserve.totalSupplyAPY(currentSlot) ?? 0;
         } catch { /* apy stays 0 */ }
 
         positions.push({

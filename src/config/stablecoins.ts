@@ -98,10 +98,31 @@ export function mintToSymbol(mint: string): string | undefined {
   return Object.values(STABLECOINS).find((s) => s.mint === mint)?.symbol;
 }
 
+/** Look up a stablecoin config by its mint address */
+export function getStablecoinByMint(mint: string): StablecoinConfig | undefined {
+  return Object.values(STABLECOINS).find((s) => s.mint === mint);
+}
+
 /** Convert raw amount to human-readable with proper decimals */
 export function formatTokenAmount(raw: bigint, decimals: number): string {
+  if (raw < 0n) return "-" + formatTokenAmount(-raw, decimals);
   const factor = 10n ** BigInt(decimals);
   const whole = raw / factor;
-  const frac = (raw < 0n ? -raw : raw) % factor;
-  return `${whole.toLocaleString()}.${frac.toString().padStart(decimals, "0")}`;
+  const frac = raw % factor;
+  return `${whole.toString()}.${frac.toString().padStart(decimals, "0")}`;
+}
+
+/**
+ * Convert raw token amount (bigint) to a human-readable number.
+ * Uses string-based division to avoid Number() precision loss for amounts > 2^53.
+ * Returns a number because most lending SDKs expect a JS number for amounts.
+ */
+export function rawToHuman(amount: bigint, decimals: number): number {
+  const str = amount.toString();
+  if (str.length <= decimals) {
+    return parseFloat("0." + str.padStart(decimals, "0"));
+  }
+  const whole = str.slice(0, str.length - decimals);
+  const frac = str.slice(str.length - decimals);
+  return parseFloat(`${whole}.${frac}`);
 }

@@ -19,9 +19,6 @@ const log = createLogger("juplend");
  * SDKs dynamically imported to avoid hard-failing if not installed.
  */
 
-/** Jupiter Perpetuals program (handles JLP lending) */
-const JUP_PERPS_PROGRAM = "PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu";
-
 // Lazy-loaded SDK references
 let ReadClient: any = null;
 let getDepositIxs: any = null;

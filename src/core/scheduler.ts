@@ -66,42 +66,46 @@ export function createScheduler(deps: SchedulerDeps) {
         pending: state.pendingObligations.toString(),
       });
 
-      // 2. Evaluate policy (uses aggregate values for now)
+      // 2. Evaluate policy (uses aggregate multi-token totals)
       const decision = evaluatePolicy(state, deps.policy);
       lastDecision = decision;
       log.info("Policy evaluated", { reason: decision.reason, rebalance: decision.rebalance.type });
 
       // 3. Execute rebalancing — uses lending manager for optimal routing
+      //    The policy decision now includes the target token for rebalancing.
       if (decision.rebalance.type === "deposit") {
+        const token = decision.rebalance.token;
         try {
           const { protocol, tx } = await deps.lendingManager.buildOptimalDepositTx(
-            "USDC", decision.rebalance.amountUsdc,
+            token, decision.rebalance.amountUsdc,
           );
           const sig = await deps.kora.sendTransaction(tx);
           auditService.record("rebalance.deposit", {
             protocol,
-            token: "USDC",
+            token,
             amount: decision.rebalance.amountUsdc.toString(),
             txSignature: sig,
           }, "success");
         } catch (err) {
           const reason = err instanceof Error ? err.message : String(err);
           auditService.record("rebalance.deposit", {
+            token,
             amount: decision.rebalance.amountUsdc.toString(),
             reason,
           }, "failure");
           log.error("Rebalance deposit failed", { reason });
         }
       } else if (decision.rebalance.type === "withdraw") {
+        const token = decision.rebalance.token;
         try {
           const withdrawTxs = await deps.lendingManager.buildOptimalWithdrawTxs(
-            "USDC", decision.rebalance.amountUsdc,
+            token, decision.rebalance.amountUsdc,
           );
           for (const { protocol, tx, amount } of withdrawTxs) {
             const sig = await deps.kora.sendTransaction(tx);
             auditService.record("rebalance.withdraw", {
               protocol,
-              token: "USDC",
+              token,
               amount: amount.toString(),
               txSignature: sig,
             }, "success");
@@ -109,6 +113,7 @@ export function createScheduler(deps: SchedulerDeps) {
         } catch (err) {
           const reason = err instanceof Error ? err.message : String(err);
           auditService.record("rebalance.withdraw", {
+            token,
             amount: decision.rebalance.amountUsdc.toString(),
             reason,
           }, "failure");
@@ -149,7 +154,9 @@ export function createScheduler(deps: SchedulerDeps) {
     start() {
       if (timer) return;
       log.info("Scheduler starting", { intervalSeconds: deps.intervalSeconds });
-      tick();
+      tick().catch((err) => {
+        log.error("Initial tick failed", { reason: String(err) });
+      });
       timer = setInterval(tick, deps.intervalSeconds * 1000);
     },
 

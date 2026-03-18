@@ -69,12 +69,13 @@ export function createSolanaClient(rpcUrl: string, keypairSecret: string): Solan
       }
 
       // VersionedTransaction path (used by Kora-relayed txns)
+      // Fetch blockhash BEFORE sending so we confirm against the correct one
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash("confirmed");
       const sig = await connection.sendRawTransaction(tx.serialize(), {
         skipPreflight: false,
         ...opts,
       });
-      const { blockhash, lastValidBlockHeight } =
-        await connection.getLatestBlockhash("confirmed");
       await connection.confirmTransaction(
         { signature: sig, blockhash, lastValidBlockHeight },
         "confirmed",

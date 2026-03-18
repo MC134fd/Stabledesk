@@ -101,6 +101,12 @@ export function buildState(
   const totalAum = totalLiquid + totalDeployed;
   const usdcLiquid = balances.get("USDC")?.liquid ?? 0n;
 
+  // Compute Kamino-only deposited total for legacy field accuracy
+  let kaminoOnly = 0n;
+  for (const pos of lendingPositions) {
+    if (pos.protocol === "kamino") kaminoOnly += pos.depositedAmount;
+  }
+
   return {
     balances,
     lendingPositions,
@@ -112,7 +118,7 @@ export function buildState(
     lastUpdatedAt: new Date().toISOString(),
     // Legacy
     liquidUsdc: usdcLiquid,
-    kaminoDeposited: totalDeployed,
+    kaminoDeposited: kaminoOnly,
     totalUsdc: totalAum,
   };
 }
