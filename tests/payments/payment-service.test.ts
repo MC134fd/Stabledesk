@@ -133,3 +133,153 @@ describe('summarizePendingPayments', () => {
 });
 
 void fixedOptions; // suppress unused-var warning — available for one-off tests if needed
+
+// ---------------------------------------------------------------------------
+describe('createPayment — optional fields', () => {
+  it('preserves dueAt when supplied', () => {
+    const svc = makeService();
+    const p = svc.createPayment({ recipient: 'A', amountUsdc: 50, dueAt: '2024-06-01T00:00:00.000Z' });
+    expect(p.dueAt).toBe('2024-06-01T00:00:00.000Z');
+  });
+
+  it('preserves reference when supplied', () => {
+    const svc = makeService();
+    const p = svc.createPayment({ recipient: 'A', amountUsdc: 50, reference: 'INV-001' });
+    expect(p.reference).toBe('INV-001');
+  });
+
+  it('omits dueAt when not supplied', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    expect(p.dueAt).toBeUndefined();
+  });
+
+  it('trims leading/trailing whitespace from recipient', () => {
+    const svc = makeService();
+    const p = svc.createPayment({ recipient: '  Bob  ', amountUsdc: 10 });
+    expect(p.recipient).toBe('Bob');
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('getPayment', () => {
+  it('returns the payment for a known id', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    expect(svc.getPayment(p.id)).toMatchObject({ id: p.id, status: 'queued' });
+  });
+
+  it('returns undefined for an unknown id', () => {
+    const svc = makeService();
+    expect(svc.getPayment('does-not-exist')).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('listPayments', () => {
+  it('returns all payments regardless of status', () => {
+    const svc = makeService();
+    const a = svc.createPayment({ recipient: 'A', amountUsdc: 10 });
+    const b = svc.createPayment({ recipient: 'B', amountUsdc: 20 });
+    svc.updatePaymentStatus(b.id, 'ready');
+    svc.updatePaymentStatus(b.id, 'processing');
+    svc.updatePaymentStatus(b.id, 'sent');
+
+    const all = svc.listPayments();
+    expect(all).toHaveLength(2);
+    expect(all.map((p) => p.id)).toContain(a.id);
+    expect(all.map((p) => p.id)).toContain(b.id);
+  });
+
+  it('returns an empty array when no payments exist', () => {
+    const svc = makeService();
+    expect(svc.listPayments()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('updatePaymentStatus — error cases', () => {
+  it('throws when the payment id does not exist', () => {
+    const svc = makeService();
+    expect(() => svc.updatePaymentStatus('ghost-id', 'ready')).toThrow(/not found/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('state machine — complete valid transition paths', () => {
+  it('queued → awaiting_liquidity', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    expect(svc.updatePaymentStatus(p.id, 'awaiting_liquidity').status).toBe('awaiting_liquidity');
+  });
+
+  it('queued → failed', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    expect(svc.updatePaymentStatus(p.id, 'failed').status).toBe('failed');
+  });
+
+  it('awaiting_liquidity → failed', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    svc.updatePaymentStatus(p.id, 'awaiting_liquidity');
+    expect(svc.updatePaymentStatus(p.id, 'failed').status).toBe('failed');
+  });
+
+  it('ready → failed', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    svc.updatePaymentStatus(p.id, 'ready');
+    expect(svc.updatePaymentStatus(p.id, 'failed').status).toBe('failed');
+  });
+
+  it('processing → failed', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    svc.updatePaymentStatus(p.id, 'ready');
+    svc.updatePaymentStatus(p.id, 'processing');
+    expect(svc.updatePaymentStatus(p.id, 'failed').status).toBe('failed');
+  });
+
+  it('failed → queued (recovery path)', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    svc.updatePaymentStatus(p.id, 'failed');
+    expect(svc.updatePaymentStatus(p.id, 'queued').status).toBe('queued');
+  });
+
+  it('full happy path: queued → ready → processing → sent', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    svc.updatePaymentStatus(p.id, 'ready');
+    svc.updatePaymentStatus(p.id, 'processing');
+    const final = svc.updatePaymentStatus(p.id, 'sent');
+    expect(final.status).toBe('sent');
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('state machine — invalid transitions rejected', () => {
+  it('queued → processing is invalid', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    expect(() => svc.updatePaymentStatus(p.id, 'processing')).toThrow(/Invalid transition/);
+  });
+
+  it('sent is terminal — sent → queued is invalid', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    svc.updatePaymentStatus(p.id, 'ready');
+    svc.updatePaymentStatus(p.id, 'processing');
+    svc.updatePaymentStatus(p.id, 'sent');
+    expect(() => svc.updatePaymentStatus(p.id, 'queued')).toThrow(/Invalid transition/);
+  });
+
+  it('processing → ready is invalid (no backward transition)', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    svc.updatePaymentStatus(p.id, 'ready');
+    svc.updatePaymentStatus(p.id, 'processing');
+    expect(() => svc.updatePaymentStatus(p.id, 'ready')).toThrow(/Invalid transition/);
+  });
+});

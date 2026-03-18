@@ -1,9 +1,73 @@
-// TODO: Implement the audit trail service.
-// - Record every treasury action (rebalance, payment, policy evaluation)
-// - Capture actor, action type, parameters, result, and timestamp
-// - Persist audit events to an append-only log or store
-// - Provide a query interface for compliance reporting
+export type AuditEventType =
+  | 'scheduler_decision'
+  | 'kamino_deposit_attempt'
+  | 'kamino_deposit_success'
+  | 'kamino_deposit_failure'
+  | 'kamino_withdraw_attempt'
+  | 'kamino_withdraw_success'
+  | 'kamino_withdraw_failure'
+  | 'payment_status_change'
+  | 'error';
 
-export const auditService = {
-  // TODO: implement recordEvent(), queryEvents(), exportReport()
-} as const;
+export type AuditEvent = {
+  id: string;
+  type: AuditEventType;
+  timestamp: string;
+  data?: unknown;
+};
+
+export type AuditFilter = {
+  type?: AuditEventType;
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type AuditService = {
+  recordEvent(type: AuditEventType, data?: unknown): AuditEvent;
+  listEvents(): AuditEvent[];
+  queryEvents(filter?: AuditFilter): AuditEvent[];
+};
+
+type AuditServiceOptions = {
+  now?: () => string;
+  generateId?: () => string;
+};
+
+let _idCounter = 0;
+function defaultGenerateId(): string {
+  return `audit_${Date.now()}_${++_idCounter}`;
+}
+
+export function createAuditService(options: AuditServiceOptions = {}): AuditService {
+  const events: AuditEvent[] = []; // append-only — never mutate existing elements
+  const now = options.now ?? (() => new Date().toISOString());
+  const generateId = options.generateId ?? defaultGenerateId;
+
+  return {
+    recordEvent(type, data?) {
+      const event: AuditEvent = {
+        id: generateId(),
+        type,
+        timestamp: now(),
+        ...(data !== undefined && { data }),
+      };
+      events.push(event);
+      return event;
+    },
+
+    listEvents() {
+      return [...events]; // shallow copy — callers cannot mutate internal state
+    },
+
+    queryEvents(filter = {}) {
+      return events.filter((e) => {
+        if (filter.type !== undefined && e.type !== filter.type) return false;
+        if (filter.fromDate !== undefined && e.timestamp < filter.fromDate) return false;
+        if (filter.toDate !== undefined && e.timestamp > filter.toDate) return false;
+        return true;
+      });
+    },
+  };
+}
+
+export const auditService = createAuditService();

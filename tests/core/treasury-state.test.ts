@@ -91,6 +91,57 @@ describe('buildTreasuryState — USDC balance', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('buildTreasuryState — Kamino balance', () => {
+  it('defaults kaminoUsdcBalance to 0 when no provider supplied', async () => {
+    vi.spyOn(solanaClient, 'getSolBalance').mockResolvedValue(1);
+    vi.spyOn(usdcClient, 'getBalance').mockResolvedValue(zeroUsdc);
+
+    const state = await buildTreasuryState(conn, WALLET, USDC_MINT);
+
+    expect(state.kaminoUsdcBalance).toBe(0);
+  });
+
+  it('reflects injected Kamino balance', async () => {
+    vi.spyOn(solanaClient, 'getSolBalance').mockResolvedValue(1);
+    vi.spyOn(usdcClient, 'getBalance').mockResolvedValue(zeroUsdc);
+
+    const state = await buildTreasuryState(conn, WALLET, USDC_MINT, undefined, async () => 5000);
+
+    expect(state.kaminoUsdcBalance).toBe(5000);
+  });
+
+  it('totalUsdcExposure equals usdcBalance + kaminoUsdcBalance', async () => {
+    vi.spyOn(solanaClient, 'getSolBalance').mockResolvedValue(1);
+    vi.spyOn(usdcClient, 'getBalance').mockResolvedValue({
+      ...zeroUsdc,
+      accountExists: true,
+      rawAmount: 100_000_000n,
+      uiAmount: 100,
+    });
+
+    const state = await buildTreasuryState(conn, WALLET, USDC_MINT, undefined, async () => 400);
+
+    expect(state.usdcBalance).toBe(100);
+    expect(state.kaminoUsdcBalance).toBe(400);
+    expect(state.totalUsdcExposure).toBe(500);
+  });
+
+  it('totalUsdcExposure equals usdcBalance when Kamino balance is zero', async () => {
+    vi.spyOn(solanaClient, 'getSolBalance').mockResolvedValue(1);
+    vi.spyOn(usdcClient, 'getBalance').mockResolvedValue({
+      ...zeroUsdc,
+      accountExists: true,
+      rawAmount: 200_000_000n,
+      uiAmount: 200,
+    });
+
+    const state = await buildTreasuryState(conn, WALLET, USDC_MINT);
+
+    expect(state.totalUsdcExposure).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('buildTreasuryState — pending payments summary', () => {
   it('defaults to zero when no provider is supplied', async () => {
     vi.spyOn(solanaClient, 'getSolBalance').mockResolvedValue(1);

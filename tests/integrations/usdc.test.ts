@@ -82,6 +82,54 @@ describe('usdcClient.getBalance — account exists', () => {
 });
 
 // ---------------------------------------------------------------------------
+// ATA derivation consistency
+// ---------------------------------------------------------------------------
+describe('usdcClient.getBalance — ATA derivation', () => {
+  it('derives the same ATA address on repeated calls with the same inputs', async () => {
+    // Both calls will fail (account not found), but the derived tokenAccount must be identical
+    const conn = {
+      getTokenAccountBalance: vi.fn().mockRejectedValue(new Error('not found')),
+    } as unknown as Connection;
+
+    const r1 = await usdcClient.getBalance(conn, VALID_WALLET, USDC_MINT);
+    const r2 = await usdcClient.getBalance(conn, VALID_WALLET, USDC_MINT);
+
+    expect(r1.tokenAccount).toBe(r2.tokenAccount);
+    expect(typeof r1.tokenAccount).toBe('string');
+  });
+
+  it('derives a different ATA for a different wallet', async () => {
+    const ANOTHER_WALLET = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+    const conn = {
+      getTokenAccountBalance: vi.fn().mockRejectedValue(new Error('not found')),
+    } as unknown as Connection;
+
+    const r1 = await usdcClient.getBalance(conn, VALID_WALLET, USDC_MINT);
+    const r2 = await usdcClient.getBalance(conn, ANOTHER_WALLET, USDC_MINT);
+
+    expect(r1.tokenAccount).not.toBe(r2.tokenAccount);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// uiAmount null fallback
+// ---------------------------------------------------------------------------
+describe('usdcClient.getBalance — uiAmount null handling', () => {
+  it('returns uiAmount 0 when the RPC returns null for uiAmount', async () => {
+    const conn = {
+      getTokenAccountBalance: vi.fn().mockResolvedValue({
+        value: { amount: '0', uiAmount: null, decimals: 6 },
+      }),
+    } as unknown as Connection;
+
+    const result = await usdcClient.getBalance(conn, VALID_WALLET, USDC_MINT);
+
+    expect(result.uiAmount).toBe(0);
+    expect(result.rawAmount).toBe(0n);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Live devnet test — skipped by default
 // ---------------------------------------------------------------------------
 describe.skip('usdcClient.getBalance — live devnet (manual only)', () => {
