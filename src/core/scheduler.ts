@@ -1,9 +1,9 @@
 import type { TreasuryState } from "./treasury-state.js";
-import { emptyState } from "./treasury-state.js";
+import { emptyState, buildState } from "./treasury-state.js";
 import { evaluatePolicy, type PolicyDecision } from "./liquidity-policy.js";
 import type { TreasuryPolicy } from "../config/policy.js";
-import type { UsdcClient } from "../integrations/usdc.js";
-import type { KaminoClient } from "../integrations/kamino.js";
+import type { TokenClient } from "../integrations/usdc.js";
+import type { LendingManager } from "../integrations/lending/manager.js";
 import type { KoraClient } from "../integrations/kora.js";
 import type { SolanaClient } from "../integrations/solana.js";
 import { paymentStore } from "../payments/payment-store.js";
@@ -14,8 +14,8 @@ const log = createLogger("scheduler");
 
 export interface SchedulerDeps {
   solana: SolanaClient;
-  usdc: UsdcClient;
-  kamino: KaminoClient;
+  tokenClient: TokenClient;
+  lendingManager: LendingManager;
   kora: KoraClient;
   policy: TreasuryPolicy;
   paymentService: { processPending(): Promise<number> };
@@ -29,9 +29,9 @@ export function createScheduler(deps: SchedulerDeps) {
   let lastDecision: PolicyDecision | null = null;
 
   async function refreshState(): Promise<TreasuryState> {
-    const [liquidUsdc, kaminoPos, slot] = await Promise.all([
-      deps.usdc.getBalance(),
-      deps.kamino.getPosition(),
+    const [liquidBalances, portfolio, slot] = await Promise.all([
+      deps.tokenClient.getAllBalances(),
+      deps.lendingManager.getPortfolio(),
       deps.solana.getSlot(),
     ]);
 
@@ -43,15 +43,7 @@ export function createScheduler(deps: SchedulerDeps) {
       0n,
     );
 
-    currentState = {
-      liquidUsdc,
-      kaminoDeposited: kaminoPos.depositedUsdc,
-      totalUsdc: liquidUsdc + kaminoPos.depositedUsdc,
-      pendingObligations,
-      lastUpdatedSlot: slot,
-      lastUpdatedAt: new Date().toISOString(),
-    };
-
+    currentState = buildState(liquidBalances, portfolio.positions, pendingObligations, slot);
     return currentState;
   }
 
@@ -66,23 +58,29 @@ export function createScheduler(deps: SchedulerDeps) {
       // 1. Refresh state from chain
       const state = await refreshState();
       log.info("State refreshed", {
-        liquid: state.liquidUsdc.toString(),
-        kamino: state.kaminoDeposited.toString(),
-        total: state.totalUsdc.toString(),
+        totalLiquid: state.totalLiquid.toString(),
+        totalDeployed: state.totalDeployed.toString(),
+        totalAum: state.totalAum.toString(),
+        tokens: [...state.balances.keys()].join(","),
+        positions: state.lendingPositions.length,
         pending: state.pendingObligations.toString(),
       });
 
-      // 2. Evaluate policy
+      // 2. Evaluate policy (uses aggregate values for now)
       const decision = evaluatePolicy(state, deps.policy);
       lastDecision = decision;
       log.info("Policy evaluated", { reason: decision.reason, rebalance: decision.rebalance.type });
 
-      // 3. Execute rebalancing if needed
+      // 3. Execute rebalancing — uses lending manager for optimal routing
       if (decision.rebalance.type === "deposit") {
         try {
-          const tx = await deps.kamino.buildDepositTx(decision.rebalance.amountUsdc);
+          const { protocol, tx } = await deps.lendingManager.buildOptimalDepositTx(
+            "USDC", decision.rebalance.amountUsdc,
+          );
           const sig = await deps.kora.sendTransaction(tx);
           auditService.record("rebalance.deposit", {
+            protocol,
+            token: "USDC",
             amount: decision.rebalance.amountUsdc.toString(),
             txSignature: sig,
           }, "success");
@@ -96,12 +94,18 @@ export function createScheduler(deps: SchedulerDeps) {
         }
       } else if (decision.rebalance.type === "withdraw") {
         try {
-          const tx = await deps.kamino.buildWithdrawTx(decision.rebalance.amountUsdc);
-          const sig = await deps.kora.sendTransaction(tx);
-          auditService.record("rebalance.withdraw", {
-            amount: decision.rebalance.amountUsdc.toString(),
-            txSignature: sig,
-          }, "success");
+          const withdrawTxs = await deps.lendingManager.buildOptimalWithdrawTxs(
+            "USDC", decision.rebalance.amountUsdc,
+          );
+          for (const { protocol, tx, amount } of withdrawTxs) {
+            const sig = await deps.kora.sendTransaction(tx);
+            auditService.record("rebalance.withdraw", {
+              protocol,
+              token: "USDC",
+              amount: amount.toString(),
+              txSignature: sig,
+            }, "success");
+          }
         } catch (err) {
           const reason = err instanceof Error ? err.message : String(err);
           auditService.record("rebalance.withdraw", {
@@ -121,8 +125,11 @@ export function createScheduler(deps: SchedulerDeps) {
       }
 
       auditService.record("scheduler.tick", {
-        liquid: state.liquidUsdc.toString(),
-        kamino: state.kaminoDeposited.toString(),
+        totalLiquid: state.totalLiquid.toString(),
+        totalDeployed: state.totalDeployed.toString(),
+        protocols: state.lendingPositions.map((p) => p.protocol).filter(
+          (v, i, a) => a.indexOf(v) === i,
+        ).join(","),
         rebalance: decision.rebalance.type,
         paymentsProcessable: decision.canProcessPayments,
       }, "success");
@@ -142,7 +149,6 @@ export function createScheduler(deps: SchedulerDeps) {
     start() {
       if (timer) return;
       log.info("Scheduler starting", { intervalSeconds: deps.intervalSeconds });
-      // Run first tick immediately
       tick();
       timer = setInterval(tick, deps.intervalSeconds * 1000);
     },
@@ -155,7 +161,6 @@ export function createScheduler(deps: SchedulerDeps) {
       }
     },
 
-    /** Manual trigger for testing/debugging */
     tick,
   };
 }

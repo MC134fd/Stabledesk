@@ -37,17 +37,25 @@ allow_durable_transactions = false
 allowed_programs = [
   "11111111111111111111111111111111",                   # System Program
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",      # SPL Token Program
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",      # Token-2022 (Token Extensions)
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",     # Associated Token Account
-  "KLend2g3cP87ber8LQi2Hb89NVzs8TmWKkSKH3sXbQ4",     # Kamino Lending (klend)
   "ComputeBudget111111111111111111111111111111",        # Compute Budget
   "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",     # Memo Program
+  # ── Lending Protocols ──
+  "KLend2g3cP87ber8LQi2Hb89NVzs8TmWKkSKH3sXbQ4",     # Kamino Lending (klend)
+  "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",     # marginfi v2
+  "So1endDq2YkqhipRh3WViPa8hFvz7yJdFptquMheVo6",     # Save (Solend)
+  "PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu",     # Jupiter Perpetuals (JLP Lend)
 ]
 
 # Token mints that may appear in transaction instructions
 allowed_tokens = [
-  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",    # USDC (mainnet)
-  # "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr",  # EURC (uncomment for FX)
-  # "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",  # PYUSD (uncomment for multi-stable)
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",    # USDC
+  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",    # USDT
+  "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA",    # USDS (Sky Dollar)
+  "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",    # PYUSD (PayPal)
+  "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH",    # USDG (Global Dollar / Paxos)
+  "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",     # USD1 (World Liberty Financial)
 ]
 
 # Tokens accepted as fee payment to the Kora operator
@@ -88,11 +96,11 @@ allow_freeze_account = false
 allow_thaw_account = false
 
 [validation.fee_payer_policy.token_2022]
-allow_transfer = false
+allow_transfer = true
 allow_burn = false
-allow_close_account = false
-allow_approve = false
-allow_revoke = false
+allow_close_account = true
+allow_approve = true
+allow_revoke = true
 allow_set_authority = false
 allow_mint_to = false
 allow_freeze_account = false
