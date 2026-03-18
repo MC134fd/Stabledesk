@@ -16,12 +16,6 @@
     "create-payment": "tsx src/scripts/create-payment.ts",
     "scheduler": "tsx src/scripts/run-scheduler.ts"
   },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "tsx": "^4.0.0",
-    "typescript": "^5.0.0",
-    "vitest": "^1.0.0"
-  },
   "dependencies": {
     "@hono/node-server": "^1.19.11",
     "@kamino-finance/klend-sdk": "^7.3.20",
@@ -31,5 +25,11 @@
     "bs58": "^6.0.0",
     "dotenv": "^17.3.1",
     "hono": "^4.12.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
   }
 }

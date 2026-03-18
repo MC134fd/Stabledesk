@@ -1,72 +1,73 @@
-import { createLogger } from "./logger.js";
+export type AuditEventType =
+  | 'scheduler_decision'
+  | 'kamino_deposit_attempt'
+  | 'kamino_deposit_success'
+  | 'kamino_deposit_failure'
+  | 'kamino_withdraw_attempt'
+  | 'kamino_withdraw_success'
+  | 'kamino_withdraw_failure'
+  | 'payment_status_change'
+  | 'error';
 
-const log = createLogger("audit");
-
-export interface AuditEvent {
+export type AuditEvent = {
   id: string;
+  type: AuditEventType;
   timestamp: string;
-  action: string;
-  actor: string;
-  params: Record<string, unknown>;
-  result: "success" | "failure";
-  detail?: string;
+  data?: unknown;
+};
+
+export type AuditFilter = {
+  type?: AuditEventType;
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type AuditService = {
+  recordEvent(type: AuditEventType, data?: unknown): AuditEvent;
+  listEvents(): AuditEvent[];
+  queryEvents(filter?: AuditFilter): AuditEvent[];
+};
+
+type AuditServiceOptions = {
+  now?: () => string;
+  generateId?: () => string;
+};
+
+let _idCounter = 0;
+function defaultGenerateId(): string {
+  return `audit_${Date.now()}_${++_idCounter}`;
 }
 
-/** Maximum number of audit events to keep in memory */
-const MAX_EVENTS = 10_000;
+export function createAuditService(options: AuditServiceOptions = {}): AuditService {
+  const events: AuditEvent[] = []; // append-only — never mutate existing elements
+  const now = options.now ?? (() => new Date().toISOString());
+  const generateId = options.generateId ?? defaultGenerateId;
 
-const events: AuditEvent[] = [];
-let counter = 0;
+  return {
+    recordEvent(type, data?) {
+      const event: AuditEvent = {
+        id: generateId(),
+        type,
+        timestamp: now(),
+        ...(data !== undefined && { data }),
+      };
+      events.push(event);
+      return event;
+    },
 
-export const auditService = {
-  record(
-    action: string,
-    params: Record<string, unknown>,
-    result: "success" | "failure",
-    detail?: string,
-    actor = "agent",
-  ): AuditEvent {
-    const event: AuditEvent = {
-      id: `audit-${Date.now()}-${++counter}`,
-      timestamp: new Date().toISOString(),
-      action,
-      actor,
-      params,
-      result,
-      detail,
-    };
-    events.push(event);
+    listEvents() {
+      return [...events]; // shallow copy — callers cannot mutate internal state
+    },
 
-    // Evict oldest events when capacity is exceeded
-    if (events.length > MAX_EVENTS) {
-      events.splice(0, events.length - MAX_EVENTS);
-    }
+    queryEvents(filter = {}) {
+      return events.filter((e) => {
+        if (filter.type !== undefined && e.type !== filter.type) return false;
+        if (filter.fromDate !== undefined && e.timestamp < filter.fromDate) return false;
+        if (filter.toDate !== undefined && e.timestamp > filter.toDate) return false;
+        return true;
+      });
+    },
+  };
+}
 
-    log.info(`[${result}] ${action}`, { eventId: event.id, ...params });
-    return event;
-  },
-
-  query(opts?: { action?: string; since?: Date; until?: Date }): AuditEvent[] {
-    let filtered = events;
-    if (opts?.action) {
-      filtered = filtered.filter((e) => e.action === opts.action);
-    }
-    if (opts?.since) {
-      const s = opts.since.toISOString();
-      filtered = filtered.filter((e) => e.timestamp >= s);
-    }
-    if (opts?.until) {
-      const u = opts.until.toISOString();
-      filtered = filtered.filter((e) => e.timestamp <= u);
-    }
-    return filtered;
-  },
-
-  all(): AuditEvent[] {
-    return [...events];
-  },
-
-  clear(): void {
-    events.length = 0;
-  },
-};
+export const auditService = createAuditService();

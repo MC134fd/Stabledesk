@@ -1,173 +1,138 @@
-import type { TreasuryState } from "./treasury-state.js";
-import { emptyState, buildState } from "./treasury-state.js";
-import { evaluatePolicy, type PolicyDecision } from "./liquidity-policy.js";
-import type { TreasuryPolicy } from "../config/policy.js";
-import type { TokenClient } from "../integrations/usdc.js";
-import type { LendingManager } from "../integrations/lending/manager.js";
-import type { KoraClient } from "../integrations/kora.js";
-import type { SolanaClient } from "../integrations/solana.js";
-import { paymentStore } from "../payments/payment-store.js";
-import { auditService } from "../audit/audit-service.js";
-import { createLogger } from "../audit/logger.js";
+import type { TreasuryState } from './treasury-state.js';
+import { evaluateLiquidityPolicy } from './liquidity-policy.js';
+import type { PaymentService } from '../payments/payment-service.js';
+import type { KaminoClient } from '../integrations/kamino.js';
+import type { AuditService } from '../audit/audit-service.js';
 
-const log = createLogger("scheduler");
+export type SchedulerAction =
+  | 'would_deposit'
+  | 'would_withdraw'
+  | 'would_execute_payment'
+  | 'no_action';
 
-export interface SchedulerDeps {
-  solana: SolanaClient;
-  tokenClient: TokenClient;
-  lendingManager: LendingManager;
-  kora: KoraClient;
-  policy: TreasuryPolicy;
-  paymentService: { processPending(): Promise<number> };
-  intervalSeconds: number;
-}
+export type SchedulerDecision = {
+  stateSnapshot: TreasuryState;
+  targetLiquidity: number;
+  excessLiquidity: number;
+  liquidityShortfall: number;
+  actions: SchedulerAction[];
+};
 
-export function createScheduler(deps: SchedulerDeps) {
-  let timer: ReturnType<typeof setInterval> | null = null;
-  let running = false;
-  let currentState: TreasuryState = emptyState();
-  let lastDecision: PolicyDecision | null = null;
+export type SchedulerCycleDeps = {
+  getTreasuryState: () => TreasuryState | Promise<TreasuryState>;
+  paymentService: PaymentService;
+  minLiquidUsdc: number;
+  // Optional — added in Milestone 6
+  kaminoClient?: KaminoClient;
+  auditService?: AuditService;
+  executionMode?: 'dry_run' | 'execute'; // default: 'dry_run'
+};
 
-  async function refreshState(): Promise<TreasuryState> {
-    const [liquidBalances, portfolio, slot] = await Promise.all([
-      deps.tokenClient.getAllBalances(),
-      deps.lendingManager.getPortfolio(),
-      deps.solana.getSlot(),
-    ]);
+// Stable output order — withdraw liquidity issues first, then execute, then optimize
+const ACTION_ORDER: SchedulerAction[] = [
+  'would_withdraw',
+  'would_execute_payment',
+  'would_deposit',
+];
 
-    // Sum pending payment obligations
-    const pending = paymentStore.findByStatus("pending");
-    const processing = paymentStore.findByStatus("processing");
-    const pendingObligations = [...pending, ...processing].reduce(
-      (sum, p) => sum + p.amountUsdc,
-      0n,
-    );
+export async function runSchedulerCycle(deps: SchedulerCycleDeps): Promise<SchedulerDecision> {
+  const {
+    getTreasuryState,
+    paymentService,
+    minLiquidUsdc,
+    kaminoClient,
+    auditService,
+    executionMode = 'dry_run',
+  } = deps;
 
-    currentState = buildState(liquidBalances, portfolio.positions, pendingObligations, slot);
-    return currentState;
-  }
+  // Step 1: snapshot treasury state
+  const stateSnapshot = await getTreasuryState();
 
-  async function tick(): Promise<void> {
-    if (running) {
-      log.warn("Skipping tick — previous tick still running");
-      return;
-    }
-    running = true;
+  // Step 2: read pending payments
+  const pending = paymentService.listPendingPayments();
+  const pendingTotal = pending.reduce((sum, p) => sum + p.amountUsdc, 0);
 
-    try {
-      // 1. Refresh state from chain
-      const state = await refreshState();
-      log.info("State refreshed", {
-        totalLiquid: state.totalLiquid.toString(),
-        totalDeployed: state.totalDeployed.toString(),
-        totalAum: state.totalAum.toString(),
-        tokens: [...state.balances.keys()].join(","),
-        positions: state.lendingPositions.length,
-        pending: state.pendingObligations.toString(),
-      });
+  // Step 3: evaluate liquidity
+  const { targetLiquidity, excessLiquidity, liquidityShortfall } = evaluateLiquidityPolicy({
+    minLiquidUsdc,
+    pendingPaymentsTotal: pendingTotal,
+    currentLiquidUsdc: stateSnapshot.usdcBalance,
+  });
 
-      // 2. Evaluate policy (uses aggregate multi-token totals)
-      const decision = evaluatePolicy(state, deps.policy);
-      lastDecision = decision;
-      log.info("Policy evaluated", { reason: decision.reason, rebalance: decision.rebalance.type });
+  // Steps 4-5: update payment statuses; track whether any become/are ready
+  let hasReadyPayments = false;
 
-      // 3. Execute rebalancing — uses lending manager for optimal routing
-      //    The policy decision now includes the target token for rebalancing.
-      if (decision.rebalance.type === "deposit") {
-        const token = decision.rebalance.token;
-        try {
-          const { protocol, tx } = await deps.lendingManager.buildOptimalDepositTx(
-            token, decision.rebalance.amountUsdc,
-          );
-          const sig = await deps.kora.sendTransaction(tx);
-          auditService.record("rebalance.deposit", {
-            protocol,
-            token,
-            amount: decision.rebalance.amountUsdc.toString(),
-            txSignature: sig,
-          }, "success");
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          auditService.record("rebalance.deposit", {
-            token,
-            amount: decision.rebalance.amountUsdc.toString(),
-            reason,
-          }, "failure");
-          log.error("Rebalance deposit failed", { reason });
-        }
-      } else if (decision.rebalance.type === "withdraw") {
-        const token = decision.rebalance.token;
-        try {
-          const withdrawTxs = await deps.lendingManager.buildOptimalWithdrawTxs(
-            token, decision.rebalance.amountUsdc,
-          );
-          for (const { protocol, tx, amount } of withdrawTxs) {
-            const sig = await deps.kora.sendTransaction(tx);
-            auditService.record("rebalance.withdraw", {
-              protocol,
-              token,
-              amount: amount.toString(),
-              txSignature: sig,
-            }, "success");
-          }
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          auditService.record("rebalance.withdraw", {
-            token,
-            amount: decision.rebalance.amountUsdc.toString(),
-            reason,
-          }, "failure");
-          log.error("Rebalance withdraw failed", { reason });
-        }
+  for (const payment of pending) {
+    if (liquidityShortfall > 0) {
+      // Insufficient — re-label newly queued; don't demote already-ready/processing
+      if (payment.status === 'queued') {
+        paymentService.updatePaymentStatus(payment.id, 'awaiting_liquidity');
+      } else if (payment.status === 'ready') {
+        hasReadyPayments = true;
       }
-
-      // 4. Process pending payments
-      if (decision.canProcessPayments) {
-        const processed = await deps.paymentService.processPending();
-        if (processed > 0) {
-          log.info("Processed payments", { count: processed });
-        }
+    } else {
+      // Sufficient — promote queued and blocked payments to ready
+      if (payment.status === 'queued' || payment.status === 'awaiting_liquidity') {
+        paymentService.updatePaymentStatus(payment.id, 'ready');
+        hasReadyPayments = true;
+      } else if (payment.status === 'ready') {
+        hasReadyPayments = true;
       }
-
-      auditService.record("scheduler.tick", {
-        totalLiquid: state.totalLiquid.toString(),
-        totalDeployed: state.totalDeployed.toString(),
-        protocols: state.lendingPositions.map((p) => p.protocol).filter(
-          (v, i, a) => a.indexOf(v) === i,
-        ).join(","),
-        rebalance: decision.rebalance.type,
-        paymentsProcessable: decision.canProcessPayments,
-      }, "success");
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      log.error("Scheduler tick failed", { reason });
-      auditService.record("scheduler.tick", { reason }, "failure");
-    } finally {
-      running = false;
     }
   }
 
-  return {
-    getState: () => currentState,
-    getLastDecision: () => lastDecision,
+  // Step 6: determine actions (deduplicated, stable order)
+  const found = new Set<SchedulerAction>();
+  if (liquidityShortfall > 0 && pending.length > 0) found.add('would_withdraw');
+  if (hasReadyPayments) found.add('would_execute_payment');
+  if (excessLiquidity > 0) found.add('would_deposit');
 
-    start() {
-      if (timer) return;
-      log.info("Scheduler starting", { intervalSeconds: deps.intervalSeconds });
-      tick().catch((err) => {
-        log.error("Initial tick failed", { reason: String(err) });
-      });
-      timer = setInterval(tick, deps.intervalSeconds * 1000);
-    },
+  const actions: SchedulerAction[] = ACTION_ORDER.filter((a) => found.has(a));
+  if (actions.length === 0) actions.push('no_action');
 
-    stop() {
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
-        log.info("Scheduler stopped");
+  // Step 7: Kamino execution (execute mode only — payments remain dry-run)
+  if (executionMode === 'execute' && kaminoClient) {
+    if (found.has('would_withdraw')) {
+      const withdrawAmount = Math.min(liquidityShortfall, stateSnapshot.kaminoUsdcBalance);
+      if (withdrawAmount > 0) {
+        auditService?.recordEvent('kamino_withdraw_attempt', { withdrawAmount });
+        try {
+          const result = await kaminoClient.withdrawFromKamino(withdrawAmount);
+          auditService?.recordEvent('kamino_withdraw_success', result);
+        } catch (err) {
+          auditService?.recordEvent('kamino_withdraw_failure', { error: String(err) });
+        }
       }
-    },
+    }
 
-    tick,
+    if (found.has('would_deposit')) {
+      const depositAmount = excessLiquidity;
+      if (depositAmount > 0) {
+        auditService?.recordEvent('kamino_deposit_attempt', { depositAmount });
+        try {
+          const result = await kaminoClient.depositToKamino(depositAmount);
+          auditService?.recordEvent('kamino_deposit_success', result);
+        } catch (err) {
+          auditService?.recordEvent('kamino_deposit_failure', { error: String(err) });
+        }
+      }
+    }
+  }
+
+  // Step 8: record scheduler decision audit event
+  const decision: SchedulerDecision = {
+    stateSnapshot,
+    targetLiquidity,
+    excessLiquidity,
+    liquidityShortfall,
+    actions,
   };
+  auditService?.recordEvent('scheduler_decision', {
+    actions,
+    targetLiquidity,
+    excessLiquidity,
+    liquidityShortfall,
+  });
+
+  return decision;
 }

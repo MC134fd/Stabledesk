@@ -1,91 +1,22 @@
-import {
-  Connection,
-  Keypair,
-  Transaction,
-  VersionedTransaction,
-  SendOptions,
-  type Commitment,
-} from "@solana/web3.js";
-import bs58 from "bs58";
-import { createLogger } from "../audit/logger.js";
+import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 
-const log = createLogger("solana");
+export const solanaClient = {
+  createConnection(rpcUrl: string): Connection {
+    return new Connection(rpcUrl, 'confirmed');
+  },
 
-export interface SolanaClient {
-  connection: Connection;
-  keypair: Keypair;
-  sendAndConfirm(
-    tx: Transaction | VersionedTransaction,
-    signers?: Keypair[],
-    opts?: SendOptions,
-  ): Promise<string>;
-  getSlot(): Promise<number>;
-}
+  async getCurrentSlot(connection: Connection): Promise<number> {
+    return connection.getSlot();
+  },
 
-export function createSolanaClient(rpcUrl: string, keypairSecret: string): SolanaClient {
-  const connection = new Connection(rpcUrl, "confirmed" as Commitment);
-
-  // Support base58-encoded private key or JSON array
-  let keypair: Keypair;
-  try {
-    if (keypairSecret.startsWith("[")) {
-      const bytes = new Uint8Array(JSON.parse(keypairSecret));
-      keypair = Keypair.fromSecretKey(bytes);
-    } else {
-      keypair = Keypair.fromSecretKey(bs58.decode(keypairSecret));
+  async getSolBalance(connection: Connection, walletAddress: string): Promise<number> {
+    let publicKey: PublicKey;
+    try {
+      publicKey = new PublicKey(walletAddress);
+    } catch {
+      throw new Error(`Invalid treasury wallet public key: "${walletAddress}"`);
     }
-  } catch (e) {
-    throw new Error(`Invalid TREASURY_KEYPAIR: ${(e as Error).message}`);
-  }
-
-  log.info("Solana client initialized", {
-    rpc: rpcUrl,
-    wallet: keypair.publicKey.toBase58(),
-  });
-
-  return {
-    connection,
-    keypair,
-
-    async sendAndConfirm(tx, signers, opts) {
-      if (tx instanceof Transaction) {
-        const { blockhash, lastValidBlockHeight } =
-          await connection.getLatestBlockhash("confirmed");
-        tx.recentBlockhash = blockhash;
-        tx.feePayer = keypair.publicKey;
-        tx.sign(keypair, ...(signers ?? []));
-
-        const sig = await connection.sendRawTransaction(tx.serialize(), {
-          skipPreflight: false,
-          ...opts,
-        });
-
-        await connection.confirmTransaction(
-          { signature: sig, blockhash, lastValidBlockHeight },
-          "confirmed",
-        );
-        log.info("Transaction confirmed", { signature: sig });
-        return sig;
-      }
-
-      // VersionedTransaction path (used by Kora-relayed txns)
-      // Fetch blockhash BEFORE sending so we confirm against the correct one
-      const { blockhash, lastValidBlockHeight } =
-        await connection.getLatestBlockhash("confirmed");
-      const sig = await connection.sendRawTransaction(tx.serialize(), {
-        skipPreflight: false,
-        ...opts,
-      });
-      await connection.confirmTransaction(
-        { signature: sig, blockhash, lastValidBlockHeight },
-        "confirmed",
-      );
-      log.info("Transaction confirmed (versioned)", { signature: sig });
-      return sig;
-    },
-
-    async getSlot() {
-      return connection.getSlot("confirmed");
-    },
-  };
-}
+    const lamports = await connection.getBalance(publicKey);
+    return lamports / LAMPORTS_PER_SOL;
+  },
+};

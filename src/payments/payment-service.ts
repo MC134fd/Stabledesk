@@ -1,126 +1,94 @@
-import { randomUUID } from "node:crypto";
-import type { PaymentRequest, PaymentRecord } from "./payment-types.js";
-import { paymentStore } from "./payment-store.js";
-import { canApprovePayment } from "../core/liquidity-policy.js";
-import type { TreasuryState } from "../core/treasury-state.js";
-import type { TreasuryPolicy } from "../config/policy.js";
-import type { UsdcClient } from "../integrations/usdc.js";
-import type { KoraClient } from "../integrations/kora.js";
-import { auditService } from "../audit/audit-service.js";
-import { createLogger } from "../audit/logger.js";
+import type { Payment, PaymentStatus, CreatePaymentInput, PendingPaymentsSummary } from './payment-types.js';
+import { createPaymentStore, type PaymentStore } from './payment-store.js';
 
-const log = createLogger("payments");
+// Allowed status transitions — terminal states have no outgoing edges
+const TRANSITIONS: Record<PaymentStatus, readonly PaymentStatus[]> = {
+  queued:              ['awaiting_liquidity', 'ready', 'failed'],
+  awaiting_liquidity:  ['ready', 'failed'],
+  ready:               ['processing', 'failed'],
+  processing:          ['sent', 'failed'],
+  failed:              ['queued'],
+  sent:                [],
+};
 
-export interface PaymentServiceDeps {
-  usdc: UsdcClient;
-  kora: KoraClient;
-  getState: () => TreasuryState;
-  policy: TreasuryPolicy;
+type ServiceOptions = {
+  now?: () => string;
+  generateId?: () => string;
+};
+
+export type PaymentService = {
+  createPayment(input: CreatePaymentInput): Payment;
+  getPayment(id: string): Payment | undefined;
+  listPayments(): Payment[];
+  listPendingPayments(): Payment[];
+  updatePaymentStatus(id: string, nextStatus: PaymentStatus): Payment;
+  summarizePendingPayments(): PendingPaymentsSummary;
+};
+
+let _counter = 0;
+function defaultGenerateId(): string {
+  return `pay_${Date.now()}_${++_counter}`;
 }
 
-export function createPaymentService(deps: PaymentServiceDeps) {
+export function createPaymentService(
+  store: PaymentStore = createPaymentStore(),
+  options: ServiceOptions = {},
+): PaymentService {
+  const now = options.now ?? (() => new Date().toISOString());
+  const generateId = options.generateId ?? defaultGenerateId;
+
   return {
-    createPayment(req: PaymentRequest): PaymentRecord {
-      // Validate amount is positive
-      if (req.amountUsdc <= 0n) {
-        throw new Error("Payment amount must be positive");
+    createPayment(input) {
+      const recipient = input.recipient.trim();
+      if (!recipient) throw new Error('recipient must not be empty');
+
+      const { amountUsdc } = input;
+      if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) {
+        throw new Error(`amountUsdc must be a finite positive number, got: ${amountUsdc}`);
       }
 
-      // Validate against disallowed recipients
-      if (deps.policy.disallowedRecipients.includes(req.recipient)) {
-        throw new Error(`Recipient ${req.recipient} is blocked by policy`);
-      }
-
-      // Check liquidity policy
-      const check = canApprovePayment(req.amountUsdc, deps.getState(), deps.policy);
-      if (!check.approved) {
-        throw new Error(`Payment rejected: ${check.reason}`);
-      }
-
-      const now = new Date().toISOString();
-      const record: PaymentRecord = {
-        id: randomUUID(),
-        recipient: req.recipient,
-        amountUsdc: req.amountUsdc,
-        memo: req.memo ?? "",
-        status: "pending",
-        createdAt: now,
-        updatedAt: now,
-        scheduledAt: req.scheduledAt?.toISOString() ?? now,
+      const payment: Payment = {
+        id: generateId(),
+        recipient,
+        amountUsdc,
+        currency: 'USDC',
+        status: 'queued',
+        createdAt: now(),
+        ...(input.dueAt !== undefined && { dueAt: input.dueAt }),
+        ...(input.reference !== undefined && { reference: input.reference }),
       };
 
-      paymentStore.save(record);
-      auditService.record("payment.created", {
-        paymentId: record.id,
-        recipient: record.recipient,
-        amount: record.amountUsdc.toString(),
-      }, "success");
-
-      log.info("Payment created", { id: record.id, amount: record.amountUsdc.toString() });
-      return record;
+      return store.create(payment);
     },
 
-    async processPayment(id: string): Promise<PaymentRecord> {
-      const record = paymentStore.findById(id);
-      if (!record) throw new Error(`Payment ${id} not found`);
-      if (record.status === "completed") return record;
-      if (record.status === "processing") return record; // idempotent
-
-      // Re-validate liquidity before processing — state may have changed since creation
-      const recheck = canApprovePayment(record.amountUsdc, deps.getState(), deps.policy);
-      if (!recheck.approved) {
-        log.warn("Payment deferred — liquidity changed since creation", {
-          id,
-          reason: recheck.reason,
-        });
-        // Leave as pending so it retries next tick (don't mark as failed)
-        return record;
-      }
-
-      paymentStore.updateStatus(id, "processing");
-
-      try {
-        // Build USDC transfer transaction
-        const tx = await deps.usdc.buildTransferTx(record.recipient, record.amountUsdc);
-
-        // Send through Kora (gasless) or direct
-        const sig = await deps.kora.sendTransaction(tx);
-
-        const updated = paymentStore.updateStatus(id, "completed", { txSignature: sig });
-        auditService.record("payment.completed", {
-          paymentId: id,
-          txSignature: sig,
-        }, "success");
-
-        log.info("Payment completed", { id, txSignature: sig });
-        return updated;
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        const updated = paymentStore.updateStatus(id, "failed", { failureReason: reason });
-        auditService.record("payment.failed", {
-          paymentId: id,
-          reason,
-        }, "failure");
-
-        log.error("Payment failed", { id, reason });
-        return updated;
-      }
+    getPayment(id) {
+      return store.getById(id);
     },
 
-    async processPending(): Promise<number> {
-      const pending = paymentStore.findByStatus("pending");
-      const now = new Date();
-      let processed = 0;
+    listPayments() {
+      return store.listAll();
+    },
 
-      for (const p of pending) {
-        // Only process payments that are scheduled for now or earlier
-        if (new Date(p.scheduledAt) > now) continue;
+    listPendingPayments() {
+      return store.listPending();
+    },
 
-        await this.processPayment(p.id);
-        processed++;
+    updatePaymentStatus(id, nextStatus) {
+      const payment = store.getById(id);
+      if (!payment) throw new Error(`Payment not found: "${id}"`);
+
+      const allowed = TRANSITIONS[payment.status];
+      if (!allowed.includes(nextStatus)) {
+        throw new Error(
+          `Invalid transition: "${payment.status}" -> "${nextStatus}"`,
+        );
       }
 
-      return processed;
+      return store.updateStatus(id, nextStatus);
+    },
+
+    summarizePendingPayments() {
+      return store.summarizePending();
     },
   };
 }
