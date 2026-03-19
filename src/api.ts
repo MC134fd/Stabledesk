@@ -3,24 +3,34 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { PublicKey } from "@solana/web3.js";
 import { Hono, type Context } from "hono";
+import { getCookie } from "hono/cookie";
 import { auditService } from "./audit/audit-service.js";
 import { fmtUsdc } from "./core/liquidity-policy.js";
 import type { TreasuryState } from "./core/treasury-state.js";
 import type { CreatePaymentInput, PaymentStatus } from "./payments/payment-types.js";
 import type { LendingManager } from "./integrations/lending/manager.js";
 import type { PaymentService } from "./payments/payment-service.js";
+import { createAuthRoutes } from "./auth/auth-routes.js";
+import { requireSession } from "./middleware/session-auth.js";
+import { getSession, SESSION_COOKIE } from "./auth/sessions.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-let dashboardHtml: string;
-try {
-  dashboardHtml = readFileSync(join(__dirname, "public", "index.html"), "utf-8");
-} catch {
+
+function readHtml(filename: string): string {
   try {
-    dashboardHtml = readFileSync(join(__dirname, "..", "src", "public", "index.html"), "utf-8");
+    return readFileSync(join(__dirname, "public", filename), "utf-8");
   } catch {
-    dashboardHtml = "<html><body><h1>Dashboard not found</h1></body></html>";
+    try {
+      return readFileSync(join(__dirname, "..", "src", "public", filename), "utf-8");
+    } catch {
+      return `<html><body><h1>${filename} not found</h1></body></html>`;
+    }
   }
 }
+
+const dashboardHtml = readHtml("index.html");
+const welcomeHtml = readHtml("welcome.html");
+const loginHtml = readHtml("login.html");
 
 const VALID_STATUSES: PaymentStatus[] = ["queued", "awaiting_liquidity", "ready", "processing", "sent", "failed"];
 
@@ -57,8 +67,28 @@ export function createApi(deps: ApiDeps) {
     return next();
   };
 
-  // Dashboard
-  app.get("/", (c: Context) => c.html(dashboardHtml));
+  // Auth routes (/auth/register, /auth/login, /auth/logout, /auth/me)
+  app.route("/auth", createAuthRoutes());
+
+  // Root: redirect to /app (or /welcome if unauthenticated)
+  app.get("/", (c: Context) => {
+    const sessionId = getCookie(c, SESSION_COOKIE);
+    if (sessionId && getSession(sessionId)) return c.redirect("/app");
+    return c.redirect("/welcome");
+  });
+
+  // Welcome page (public)
+  app.get("/welcome", (c: Context) => c.html(welcomeHtml));
+
+  // Login page (redirect to /app if already authenticated)
+  app.get("/login", (c: Context) => {
+    const sessionId = getCookie(c, SESSION_COOKIE);
+    if (sessionId && getSession(sessionId)) return c.redirect("/app");
+    return c.html(loginHtml);
+  });
+
+  // App dashboard (session-protected)
+  app.get("/app", requireSession, (c: Context) => c.html(dashboardHtml));
 
   // Health check
   app.get("/health", (c: Context) => c.json({ status: "ok", timestamp: new Date().toISOString() }));

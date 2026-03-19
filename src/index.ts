@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { loadEnv } from "./config/env.js";
+import { initializeDatabase } from "./db/database.js";
 import { defaultPolicy } from "./config/policy.js";
 import { createSolanaClient } from "./integrations/solana.js";
 import { createUsdcClient, createTokenClient } from "./integrations/usdc.js";
@@ -22,6 +23,9 @@ const log = createLogger("app");
 
 export async function start() {
   const env = loadEnv();
+
+  // 0. Initialize SQLite database (users + sessions schema)
+  initializeDatabase();
 
   // 1. Solana connection + keypair
   const solana = createSolanaClient(env.SOLANA_RPC_URL, env.TREASURY_KEYPAIR);
