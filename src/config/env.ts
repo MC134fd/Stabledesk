@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 type EnvConfig = {
   /** Legacy fields */
   rpcUrl: string;
