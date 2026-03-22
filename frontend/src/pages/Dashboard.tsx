@@ -6,6 +6,8 @@ import { MetricSkeleton } from '../components/ui/SkeletonLoader';
 import { AllocationRing } from '../components/charts/AllocationRing';
 import { useTreasuryState } from '../api/hooks';
 import { useHealth } from '../api/hooks';
+import { BalanceSheet } from '../components/BalanceSheet';
+import { useSetExecutionMode, useExecute } from '../api/hooks';
 import { fmtUsdc } from '../lib/format';
 import { DECISION_COLORS } from '../lib/constants';
 
@@ -79,6 +81,12 @@ export function Dashboard() {
   const total = parseFloat(state?.totalUsdc ?? '0');
   const pending = parseFloat(state?.pendingObligations ?? '0');
   const decision = state?.lastDecision;
+  const tokenBalances = state?.tokenBalances ?? {};
+  const totalLiquidUsd = Object.values(tokenBalances).reduce((sum, v) => sum + v, 0);
+  const { mutate: setMode, loading: modeLoading } = useSetExecutionMode();
+  const { mutate: executeAction, loading: executeLoading } = useExecute();
+  const currentMode = state?.executionMode ?? 'manual';
+  const pendingRec = state?.pendingRecommendation;
 
   return (
     <div className="space-y-8">
@@ -92,7 +100,7 @@ export function Dashboard() {
 
       {/* Metric cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard label="Available USDC" value={fmtUsdc(liquid)} icon={DollarSign} />
+        <MetricCard label="Available USD" value={fmtUsdc(totalLiquidUsd)} icon={DollarSign} />
         <MetricCard label="Earning Yield" value={fmtUsdc(deployed)} icon={TrendingUp} />
         <MetricCard label="Total AUM" value={fmtUsdc(total)} icon={Wallet} />
         <MetricCard
@@ -102,6 +110,9 @@ export function Dashboard() {
           accent={pending > 0}
         />
       </div>
+
+      {/* Stablecoin balance sheet */}
+      <BalanceSheet balances={tokenBalances} />
 
       {/* Two-column: Allocation + Policy */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -126,7 +137,25 @@ export function Dashboard() {
         {/* Policy engine */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Policy Engine</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Policy Engine</CardTitle>
+              <button
+                onClick={() => setMode(currentMode === 'auto' ? 'manual' : 'auto').then(() => refetch())}
+                disabled={modeLoading}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  currentMode === 'auto' ? 'bg-teal' : 'bg-bg-surface'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+                    currentMode === 'auto' ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="text-xs text-text-muted mt-1">
+              {currentMode === 'auto' ? 'Auto-executing' : 'Manual approval'}
+            </p>
           </CardHeader>
           {decision ? (
             <div className="space-y-5">
@@ -143,6 +172,21 @@ export function Dashboard() {
                   {decision.action === 'none' && 'Hold — No Rebalance'}
                 </div>
               </div>
+
+              {/* Execute button (manual mode only) */}
+              {currentMode === 'manual' && pendingRec && (
+                <div className="space-y-2">
+                  <p className="text-xs text-text-muted">Pending Action</p>
+                  <Button
+                    onClick={() => executeAction().then(() => refetch())}
+                    loading={executeLoading}
+                    variant="primary"
+                    size="sm"
+                  >
+                    Execute {pendingRec.action === 'deposit' ? 'Deposit' : 'Withdrawal'} — {fmtUsdc(pendingRec.amountHuman)}
+                  </Button>
+                </div>
+              )}
 
               {/* Reason */}
               {decision.reason && (
