@@ -16,3 +16,18 @@ export async function requireSession(
   }
   return next();
 }
+
+/**
+ * Middleware that enforces a valid session for JSON API routes.
+ * Returns 401 JSON instead of redirecting.
+ */
+export async function requireApiSession(
+  c: Context,
+  next: Next,
+): Promise<Response | void> {
+  const sessionId = getCookie(c, SESSION_COOKIE);
+  if (!sessionId || !getSession(sessionId)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  return next();
+}

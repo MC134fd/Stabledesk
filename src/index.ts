@@ -102,7 +102,6 @@ export async function start() {
     getLastDecision: () => scheduler!.getLastDecision(),
     lendingManager,
     paymentService,
-    apiKey: env.API_KEY || undefined,
   });
 
   // Start scheduler

@@ -38,6 +38,8 @@ export type AuditService = {
 type AuditServiceOptions = {
   now?: () => string;
   generateId?: () => string;
+  /** Maximum number of events to retain in memory. Oldest events are evicted first. Default: 10000 */
+  maxEvents?: number;
 };
 
 let _idCounter = 0;
@@ -49,6 +51,7 @@ export function createAuditService(options: AuditServiceOptions = {}): AuditServ
   const events: AuditEvent[] = []; // append-only — never mutate existing elements
   const now = options.now ?? (() => new Date().toISOString());
   const generateId = options.generateId ?? defaultGenerateId;
+  const maxEvents = options.maxEvents ?? 10_000;
 
   return {
     recordEvent(type, data?) {
@@ -59,6 +62,10 @@ export function createAuditService(options: AuditServiceOptions = {}): AuditServ
         ...(data !== undefined && { data }),
       };
       events.push(event);
+      // Evict oldest events when the cap is exceeded
+      if (events.length > maxEvents) {
+        events.splice(0, events.length - maxEvents);
+      }
       return event;
     },
 

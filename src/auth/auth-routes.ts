@@ -45,18 +45,25 @@ export function createAuthRoutes() {
     }
 
     const db = getDatabase();
-    const count = (
-      db.prepare("SELECT COUNT(*) as n FROM users").get() as { n: number }
-    ).n;
-    if (count > 0) {
-      return c.json({ error: "Registration is closed" }, 403);
-    }
 
     const id = randomUUID();
     const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    db.prepare(
-      "INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)",
-    ).run(id, email, hash);
+
+    // Use a transaction to atomically check count + insert, preventing race conditions
+    const insertFirstUser = db.transaction(() => {
+      const count = (
+        db.prepare("SELECT COUNT(*) as n FROM users").get() as { n: number }
+      ).n;
+      if (count > 0) return false;
+      db.prepare(
+        "INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)",
+      ).run(id, email, hash);
+      return true;
+    });
+
+    if (!insertFirstUser()) {
+      return c.json({ error: "Registration is closed" }, 403);
+    }
 
     const sessionId = createSession(id);
     setCookie(c, SESSION_COOKIE, sessionId, {

@@ -7,6 +7,7 @@ import type { AuditService } from '../audit/audit-service.js';
 import type { SolanaClient } from '../integrations/solana.js';
 import type { LendingManager } from '../integrations/lending/manager.js';
 import type { TreasuryPolicy } from '../config/policy.js';
+import { logger } from '../audit/logger.js';
 
 export type SchedulerAction =
   | 'would_deposit'
@@ -187,8 +188,11 @@ export function createScheduler(config: SchedulerCreateConfig): SchedulerHandle 
       });
       currentState = decision.stateSnapshot;
       lastDecision = decision;
-    } catch {
-      // Errors are non-fatal — next tick will retry
+    } catch (err) {
+      logger.error('Scheduler tick failed', {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
     }
   }
 

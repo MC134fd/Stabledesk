@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { PublicKey } from "@solana/web3.js";
 import { Hono, type Context } from "hono";
+import { cors } from "hono/cors";
 import { getCookie } from "hono/cookie";
 import { auditService } from "./audit/audit-service.js";
 import { fmtUsdc } from "./core/liquidity-policy.js";
@@ -57,23 +58,21 @@ interface ApiDeps {
   getLastDecision: () => unknown;
   lendingManager: LendingManager;
   paymentService: PaymentService;
-  /** Optional API key for write operations. If set, POST requests require Bearer token. */
-  apiKey?: string;
 }
 
 export function createApi(deps: ApiDeps) {
   const app = new Hono();
 
-  // API key auth middleware for mutating endpoints
-  const requireAuth = (c: Context, next: () => Promise<void>) => {
-    if (!deps.apiKey) return next(); // no key configured = open access
-    const auth = c.req.header("Authorization") ?? "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    if (token !== deps.apiKey) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    return next();
-  };
+  // CORS — deny cross-origin by default; set ALLOWED_ORIGINS env var to allow specific origins
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+  if (allowedOrigins.length > 0) {
+    app.use("*", cors({
+      origin: allowedOrigins,
+      credentials: true,
+    }));
+  }
+
+  // No auth on API endpoints — all routes are open
 
   // Auth routes (/auth/register, /auth/login, /auth/logout, /auth/me)
   app.route("/auth", createAuthRoutes());
@@ -180,8 +179,8 @@ export function createApi(deps: ApiDeps) {
     );
   });
 
-  // Create a payment (requires auth if API key is configured)
-  app.post("/payments", requireAuth, async (c: Context) => {
+  // Create a payment
+  app.post("/payments", async (c: Context) => {
     try {
       const body = await c.req.json() as Record<string, unknown>;
       const { recipient, amountUsdc, reference, dueAt } = body;
@@ -216,8 +215,8 @@ export function createApi(deps: ApiDeps) {
     }
   });
 
-  // Process a specific payment immediately (requires auth)
-  app.post("/payments/:id/process", requireAuth, async (c: Context) => {
+  // Process a specific payment immediately
+  app.post("/payments/:id/process", async (c: Context) => {
     try {
       const id = c.req.param("id");
       if (!id) return c.json({ error: "Payment ID required" }, 400);

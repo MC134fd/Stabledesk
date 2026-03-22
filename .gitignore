@@ -24,4 +24,7 @@ Thumbs.db
 # Test coverage
 coverage/
 
-# TODO: add any project-specific ignores here
+# SQLite database files — contain credentials and session data
+*.db
+*.db-shm
+*.db-wal
