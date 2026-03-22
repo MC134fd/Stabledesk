@@ -104,3 +104,47 @@ export function useProcessPayment() {
 
   return { mutate, loading, error };
 }
+
+export function useSetExecutionMode() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const mutate = useCallback(async (mode: 'auto' | 'manual') => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await apiPost<{ mode: string }>('/settings/execution-mode', { mode });
+      return result;
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError(e);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { mutate, loading, error };
+}
+
+export function useExecute() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const mutate = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await apiPost<{ signatures: string[] }>('/execute');
+      return result;
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError(e);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { mutate, loading, error };
+}

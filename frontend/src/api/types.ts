@@ -19,6 +19,16 @@ export type TreasuryStateResponse = {
   totalLiquid: string;
   totalDeployed: string;
   totalAum: string;
+  tokenBalances: Record<string, number>;
+  executionMode: 'auto' | 'manual';
+  pendingRecommendation: PendingRecommendation | null;
+};
+
+export type PendingRecommendation = {
+  action: 'deposit' | 'withdraw';
+  tokenSymbol: string;
+  amountRaw: string;
+  amountHuman: number;
 };
 
 export type PolicyDecision = {
