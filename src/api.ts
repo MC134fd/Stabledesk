@@ -56,6 +56,10 @@ function isValidPublicKey(str: string): boolean {
 interface ApiDeps {
   getState: () => TreasuryState;
   getLastDecision: () => unknown;
+  getExecutionMode: () => 'auto' | 'manual';
+  setExecutionMode: (mode: 'auto' | 'manual') => void;
+  getPendingRecommendation: () => unknown;
+  executePendingRecommendation: () => Promise<{ signatures: string[] }>;
   lendingManager: LendingManager;
   paymentService: PaymentService;
 }
@@ -105,12 +109,40 @@ export function createApi(deps: ApiDeps) {
   // Health check
   app.get("/health", (c: Context) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
+  // Execution mode settings
+  app.post("/settings/execution-mode", async (c: Context) => {
+    try {
+      const body = await c.req.json() as Record<string, unknown>;
+      const mode = body.mode;
+      if (mode !== 'auto' && mode !== 'manual') {
+        return c.json({ error: 'mode must be "auto" or "manual"' }, 400);
+      }
+      deps.setExecutionMode(mode);
+      return c.json({ mode });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  // Execute pending recommendation (manual mode only)
+  app.post("/execute", async (c: Context) => {
+    if (deps.getExecutionMode() === 'auto') {
+      return c.json({ error: 'Cannot manually execute in auto mode' }, 400);
+    }
+    try {
+      const result = await deps.executePendingRecommendation();
+      return c.json(result);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
   // Treasury state
   app.get("/state", (c: Context) => {
     const s = deps.getState();
+    const rec = deps.getPendingRecommendation() as { amountRaw: bigint } | null;
 
     return c.json({
-      // Core fields
       liquidUsdc: s.usdcBalance.toFixed(6),
       liquidUsdcFormatted: fmtUsdc(s.usdcBalance),
       kaminoDeposited: s.kaminoUsdcBalance.toFixed(6),
@@ -120,12 +152,12 @@ export function createApi(deps: ApiDeps) {
       pendingObligations: s.pendingPaymentsTotal.toFixed(6),
       lastUpdatedAt: s.lastUpdatedAt,
       lastDecision: deps.getLastDecision(),
-      // Aggregated multi-token totals (USDC-only for now)
       totalLiquid: s.usdcBalance.toFixed(6),
       totalDeployed: s.kaminoUsdcBalance.toFixed(6),
       totalAum: s.totalUsdcExposure.toFixed(6),
-      // Multi-token balances
       tokenBalances: s.tokenBalances,
+      executionMode: deps.getExecutionMode(),
+      pendingRecommendation: rec ? { ...rec, amountRaw: rec.amountRaw.toString() } : null,
       positions: [],
     });
   });

@@ -12,6 +12,8 @@ export default defineConfig({
       '/lending': 'http://localhost:3000',
       '/audit': 'http://localhost:3000',
       '/health': 'http://localhost:3000',
+      '/settings': 'http://localhost:3000',
+      '/execute': 'http://localhost:3000',
     },
   },
 })

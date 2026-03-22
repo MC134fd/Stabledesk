@@ -110,6 +110,10 @@ export async function start() {
   const api = createApi({
     getState: () => scheduler!.getState(),
     getLastDecision: () => scheduler!.getLastDecision(),
+    getExecutionMode: () => scheduler!.getExecutionMode(),
+    setExecutionMode: (mode) => scheduler!.setExecutionMode(mode),
+    getPendingRecommendation: () => scheduler!.getPendingRecommendation(),
+    executePendingRecommendation: () => scheduler!.executePendingRecommendation(),
     lendingManager,
     paymentService,
   });
