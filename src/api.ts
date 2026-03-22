@@ -1,6 +1,7 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { PublicKey } from "@solana/web3.js";
 import { Hono, type Context } from "hono";
 import { getCookie } from "hono/cookie";
@@ -16,6 +17,12 @@ import { getSession, SESSION_COOKIE } from "./auth/sessions.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Check if React SPA build exists
+const spaDistDir = join(__dirname, "..", "frontend", "dist");
+const spaIndexPath = join(spaDistDir, "index.html");
+const hasSpa = existsSync(spaIndexPath);
+
+// Legacy HTML fallback (used only if SPA is not built)
 function readHtml(filename: string): string {
   try {
     return readFileSync(join(__dirname, "public", filename), "utf-8");
@@ -28,9 +35,10 @@ function readHtml(filename: string): string {
   }
 }
 
-const dashboardHtml = readHtml("index.html");
-const welcomeHtml = readHtml("welcome.html");
-const loginHtml = readHtml("login.html");
+const dashboardHtml = hasSpa ? "" : readHtml("index.html");
+const welcomeHtml = hasSpa ? "" : readHtml("welcome.html");
+const loginHtml = hasSpa ? "" : readHtml("login.html");
+const spaHtml = hasSpa ? readFileSync(spaIndexPath, "utf-8") : "";
 
 const VALID_STATUSES: PaymentStatus[] = ["queued", "awaiting_liquidity", "ready", "processing", "sent", "failed"];
 
@@ -70,25 +78,30 @@ export function createApi(deps: ApiDeps) {
   // Auth routes (/auth/register, /auth/login, /auth/logout, /auth/me)
   app.route("/auth", createAuthRoutes());
 
-  // Root: redirect to /app (or /welcome if unauthenticated)
-  app.get("/", (c: Context) => {
-    const sessionId = getCookie(c, SESSION_COOKIE);
-    if (sessionId && getSession(sessionId)) return c.redirect("/app");
-    return c.redirect("/welcome");
-  });
+  if (hasSpa) {
+    // Serve React SPA static assets
+    app.use("/assets/*", serveStatic({ root: "./frontend/dist" }));
 
-  // Welcome page (public)
-  app.get("/welcome", (c: Context) => c.html(welcomeHtml));
-
-  // Login page (redirect to /app if already authenticated)
-  app.get("/login", (c: Context) => {
-    const sessionId = getCookie(c, SESSION_COOKIE);
-    if (sessionId && getSession(sessionId)) return c.redirect("/app");
-    return c.html(loginHtml);
-  });
-
-  // App dashboard (session-protected)
-  app.get("/app", requireSession, (c: Context) => c.html(dashboardHtml));
+    // SPA page routes — all served by React Router
+    const spaRoutes = ["/", "/welcome", "/login", "/app", "/app/*"];
+    for (const route of spaRoutes) {
+      app.get(route, (c: Context) => c.html(spaHtml));
+    }
+  } else {
+    // Legacy HTML fallback
+    app.get("/", (c: Context) => {
+      const sessionId = getCookie(c, SESSION_COOKIE);
+      if (sessionId && getSession(sessionId)) return c.redirect("/app");
+      return c.redirect("/welcome");
+    });
+    app.get("/welcome", (c: Context) => c.html(welcomeHtml));
+    app.get("/login", (c: Context) => {
+      const sessionId = getCookie(c, SESSION_COOKIE);
+      if (sessionId && getSession(sessionId)) return c.redirect("/app");
+      return c.html(loginHtml);
+    });
+    app.get("/app", requireSession, (c: Context) => c.html(dashboardHtml));
+  }
 
   // Health check
   app.get("/health", (c: Context) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
