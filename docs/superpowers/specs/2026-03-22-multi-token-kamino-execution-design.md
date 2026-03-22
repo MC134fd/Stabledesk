@@ -15,21 +15,24 @@ Three features that expand StableDesk from a USDC-only dashboard to a full multi
 
 ### Backend
 
-**Rename** `src/integrations/usdc.ts` → `src/integrations/token-balances.ts`
+**Keep** `src/integrations/usdc.ts` for the existing `createUsdcClient` / `UsdcTokenClient` exports (used by payment service for USDC transfers). **Add** a new `fetchAllStablecoinBalances` function to the same file.
 
 **New function:** `fetchAllStablecoinBalances(connection, walletPubkey)`
 - Calls `getParsedTokenAccountsByOwner` twice in parallel:
   - Once with SPL Token program ID (`TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`)
   - Once with Token-2022 program ID (`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`)
-- Matches results against `STABLECOINS` registry by mint address
+- Combines results, then filters to only mints present in `getEnabledStablecoins()` from the stablecoin registry
 - Returns `Record<string, number>` keyed by symbol: `{ USDC: 7.00, USDT: 0, USDS: 0, PYUSD: 0, USDG: 0, USD1: 0 }`
-- Always includes all 6 enabled stablecoins, defaulting to 0
+- Always includes all 6 enabled stablecoins, defaulting to 0 for tokens with no on-chain account
 
 **`TreasuryState` type** gains a `tokenBalances: Record<string, number>` field.
 
-**`buildTreasuryState`** calls `fetchAllStablecoinBalances` and populates:
-- `tokenBalances` — the full per-token map
-- `usdcBalance` — still set from `tokenBalances.USDC` for backward compatibility
+**`buildTreasuryState` changes:**
+- Replaces the single `usdcClient.getBalance()` call with `fetchAllStablecoinBalances()`
+- Populates `tokenBalances` with the full per-token map
+- Sets `usdcBalance = tokenBalances.USDC ?? 0` for backward compatibility
+- The `usdcMint` parameter is removed (no longer needed — the registry provides all mints)
+- Note: the existing `TokenClient` interface stub in `usdc.ts` is not used; `fetchAllStablecoinBalances` is a standalone function that `buildTreasuryState` calls directly
 
 **`/state` endpoint** adds `tokenBalances` to the JSON response.
 
@@ -44,17 +47,24 @@ Three features that expand StableDesk from a USDC-only dashboard to a full multi
 - Balance formatted as USD
 - All 6 always visible, $0.00 for zero balances
 
+**"Earning Yield" card** remains USDC-only for now (shows `kaminoDeposited`). Multi-token deployed balances is a future enhancement.
+
 ## Section 2: Multi-Market Kamino
 
 ### Backend
 
-**`env.ts`:** `KAMINO_MARKET_ADDRESS` split on commas, trimmed. Returns `string[]`.
+**`env.ts`:** `KAMINO_MARKET_ADDRESS` split on commas, trimmed. Type changes from `string | undefined` to `string[]` (empty array if not set). New optional `KAMINO_MARKET_LABELS: string | undefined` env var.
 
-**New optional env var:** `KAMINO_MARKET_LABELS` — comma-separated labels (e.g. `Main,Allez`). Defaults to "Market 1", "Market 2", etc.
+**`index.ts`:** Loop over the market addresses array, push one `createKaminoAdapter()` per entry with its label.
 
-**`index.ts`:** Loop over market addresses, push one `createKaminoAdapter()` per entry.
+**`ProtocolId` type change:** `ProtocolId` in `types.ts` changes from a closed union (`"kamino" | "marginfi" | ...`) to `string`. This is required because multiple Kamino adapters need unique IDs like `"kamino-main"`, `"kamino-allez"`.
 
-**`createKaminoAdapter`:** Accepts optional `label` parameter for display name (e.g. "Kamino Lend (Main)", "Kamino Lend (Allez)"). Single market keeps current "Kamino Lend" name.
+**`createKaminoAdapter` changes:**
+- Accepts optional `label` parameter and an `idSuffix` parameter
+- `id` becomes `"kamino"` when there's one market, or `"kamino-main"` / `"kamino-allez"` when there are multiple
+- `name` becomes `"Kamino Lend"` for single market, `"Kamino Lend (Main)"` / `"Kamino Lend (Allez)"` for multiple
+
+**`LendingManager`:** The `adapters` map key type follows `ProtocolId` → `string`. No logic changes — it already aggregates across all adapters.
 
 **No frontend changes needed** — `/lending` endpoint already returns all adapter positions; the lending page renders them.
 
@@ -69,39 +79,45 @@ KAMINO_MARKET_LABELS=Main,Allez
 
 ### Backend
 
-**Scheduler state:** New field `executionMode: 'auto' | 'manual'`, defaults to `'manual'`.
+**Scheduler state:** New field `executionMode: 'auto' | 'manual'`, defaults to `'manual'`. This is intentionally ephemeral (in-memory only) — server restart resets to manual as a fail-safe.
 
 **New endpoints:**
-- `POST /settings/execution-mode` — accepts `{ mode: 'auto' | 'manual' }`, updates scheduler mode
-- `POST /execute` — manual-mode only; triggers execution of the current recommended action (deposit/withdraw via lending manager). Returns transaction result or error
+- `POST /settings/execution-mode` — accepts `{ mode: 'auto' | 'manual' }`, updates scheduler mode. No auth required (matches current API posture — all endpoints are open, noted in `api.ts` line 75).
+- `POST /execute` — manual-mode only; triggers execution of the current recommended action. Returns 400 if called in auto mode. Returns the transaction signature(s) or error.
 
 **`GET /state`:** Response adds `executionMode` field.
 
-**Scheduler `tick()` behavior:**
-- `'auto'` mode: passes `executionMode: 'execute'` to `runSchedulerCycle`, uses lending manager's `deposit`/`withdraw` methods for on-chain transactions
-- `'manual'` mode: passes `'dry_run'` (current behavior), stores recommendation for `/execute` endpoint
+**Execution wiring:** The existing `runSchedulerCycle` uses a `KaminoClient` interface for execution (lines 99-125 of `scheduler.ts`). This is replaced with a new execution approach:
 
-**Wiring:** The scheduler uses `LendingManager.deposit()` and `LendingManager.withdraw()` directly (not the separate `KaminoClient` interface), since the manager already handles yield-optimized routing across protocols.
+1. `LendingManager.buildOptimalDepositTx()` / `buildOptimalWithdrawTxs()` return unsigned `Transaction` objects
+2. A new `executeTransaction(tx, solanaClient)` helper signs the transaction with the treasury keypair and sends via `solanaClient.sendAndConfirm()`
+3. The `KaminoClient` dependency is removed from `SchedulerCycleDeps` — the lending manager + solana client handle everything
+
+**Scheduler stores a pending recommendation:** When in manual mode, the scheduler stores `{ action, tokenSymbol, amount }` from the last evaluation. The `POST /execute` endpoint reads this, builds the transaction via lending manager, signs and sends it.
+
+**Scheduler `tick()` behavior:**
+- `'auto'` mode: after evaluating policy, immediately builds + signs + sends deposit/withdraw transactions via lending manager
+- `'manual'` mode: evaluates policy, stores recommendation, does not execute
 
 ### Frontend
 
 **Policy Engine card:**
 - Auto/manual toggle switch at the top, calls `POST /settings/execution-mode`
 - **Manual mode:** When last decision recommends deposit/withdraw, an "Execute" button appears below the decision badge. Clicking calls `POST /execute`
-- **Auto mode:** No execute button; label shows "Auto-executing"
+- **Auto mode:** No execute button; shows "Auto-executing" label
 
 ## Files Changed
 
 ### Backend (modified)
-- `src/integrations/usdc.ts` → renamed to `src/integrations/token-balances.ts`
-- `src/core/treasury-state.ts` — add `tokenBalances` field
-- `src/core/scheduler.ts` — add `executionMode` state, wire execution
-- `src/config/env.ts` — parse comma-separated Kamino markets + labels
+- `src/integrations/usdc.ts` — add `fetchAllStablecoinBalances`, keep existing `createUsdcClient`
+- `src/integrations/lending/types.ts` — change `ProtocolId` from closed union to `string`
+- `src/integrations/lending/kamino-adapter.ts` — add `label` and `idSuffix` params
+- `src/integrations/lending/manager.ts` — update map key type
+- `src/core/treasury-state.ts` — add `tokenBalances` field, update `buildTreasuryState`
+- `src/core/scheduler.ts` — add `executionMode` state, replace `KaminoClient` with lending manager execution, store pending recommendation
+- `src/config/env.ts` — parse comma-separated Kamino markets + labels, type changes
 - `src/index.ts` — multi-market adapter loop, pass execution deps
 - `src/api.ts` — new endpoints, add `tokenBalances` and `executionMode` to `/state`
-
-### Backend (new)
-- None — all changes are modifications to existing files
 
 ### Frontend (modified)
 - `frontend/src/api/types.ts` — add `tokenBalances`, `executionMode`
