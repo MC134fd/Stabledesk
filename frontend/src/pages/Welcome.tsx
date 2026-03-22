@@ -104,7 +104,6 @@ function ScrollLine() {
 
   // Map scroll progress to line fill (start after hero ~15%, end before footer ~90%)
   const lineProgress = useTransform(scrollYProgress, [0.1, 0.85], [0, 1]);
-  const dotY = useTransform(scrollYProgress, [0.1, 0.85], ['0%', '100%']);
 
   if (prefersReducedMotion) return null;
 
@@ -123,18 +122,6 @@ function ScrollLine() {
         style={{ scaleY: lineProgress }}
       />
 
-      {/* Glowing dot */}
-      <motion.div
-        className="absolute left-1/2 -translate-x-1/2"
-        style={{
-          top: '15vh',
-          y: dotY,
-        }}
-      >
-        <div className="w-3 h-3 rounded-full bg-teal glow-dot" />
-        {/* Outer pulse ring */}
-        <div className="absolute inset-0 w-3 h-3 rounded-full bg-teal/30 animate-ping" />
-      </motion.div>
     </div>
   );
 }
