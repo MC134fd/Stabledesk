@@ -15,6 +15,7 @@ export type PaymentStore = {
   listPending(): Payment[];
   findByStatus(status: PaymentStatus): Payment[];
   updateStatus(id: string, nextStatus: PaymentStatus): Payment;
+  update(id: string, fields: Partial<Payment>): Payment;
   summarizePending(): PendingPaymentsSummary;
 };
 
@@ -55,11 +56,19 @@ export function createPaymentStore(): PaymentStore {
       return updated;
     },
 
+    update(id, fields) {
+      const payment = store.get(id);
+      if (!payment) throw new Error(`Payment not found: "${id}"`);
+      const updated = { ...payment, ...fields };
+      store.set(id, updated);
+      return updated;
+    },
+
     summarizePending() {
       const pending = [...store.values()].filter((p) => PENDING_STATUSES.has(p.status));
       return {
         count: pending.length,
-        total: pending.reduce((sum, p) => sum + p.amountUsdc, 0),
+        total: pending.reduce((sum, p) => sum + p.amount, 0),
       };
     },
   };

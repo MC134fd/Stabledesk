@@ -61,8 +61,9 @@ export async function start() {
     const adapterId = isMulti
       ? `kamino-${(label || `market${i + 1}`).toLowerCase()}`
       : 'kamino';
+    const programId = env.KAMINO_PROGRAM_IDS[i];
     adapters.push(
-      createKaminoAdapter(solana, marketAddr, env.KAMINO_PROGRAM_ID || undefined, adapterLabel, adapterId),
+      createKaminoAdapter(solana, marketAddr, programId, adapterLabel, adapterId),
     );
   }
 
@@ -89,6 +90,7 @@ export async function start() {
 
   // 7. Payment service
   const paymentService = createPaymentService({
+    solana,
     usdc,
     kora,
     getState: () => scheduler?.getState() ?? emptyState(),

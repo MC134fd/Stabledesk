@@ -43,6 +43,17 @@ export function createSolanaClient(rpcUrl: string, keypairB58: string): SolanaCl
       tx.recentBlockhash = blockhash;
       tx.feePayer = keypair.publicKey;
       tx.partialSign(keypair);
+
+      // Simulate first to get detailed logs on failure
+      const sim = await connection.simulateTransaction(tx);
+      if (sim.value.err) {
+        const logs = sim.value.logs ?? [];
+        console.error('[solana] Simulation failed. Logs:', logs);
+        throw new Error(
+          `Transaction simulation failed: ${JSON.stringify(sim.value.err)}. Logs:\n${logs.join('\n')}`,
+        );
+      }
+
       const raw = tx.serialize();
       const signature = await connection.sendRawTransaction(raw);
       await connection.confirmTransaction(

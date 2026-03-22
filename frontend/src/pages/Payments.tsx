@@ -5,7 +5,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Skeleton } from '../components/ui/SkeletonLoader';
-import { usePayments, useCreatePayment, useProcessPayment } from '../api/hooks';
+import { usePayments, useCreatePayment, useProcessPayment, useStablecoins } from '../api/hooks';
 import { useToast } from '../context/ToastContext';
 import { fmtUsdc, truncAddr, fmtDate } from '../lib/format';
 import { STATUS_COLORS, STATUS_LABELS } from '../lib/constants';
@@ -15,6 +15,7 @@ import clsx from 'clsx';
 const filters: { label: string; value: PaymentStatus | undefined }[] = [
   { label: 'All', value: undefined },
   { label: 'Queued', value: 'queued' },
+  { label: 'Awaiting Liquidity', value: 'awaiting_liquidity' },
   { label: 'Ready', value: 'ready' },
   { label: 'Processing', value: 'processing' },
   { label: 'Sent', value: 'sent' },
@@ -44,10 +45,12 @@ export function Payments() {
   const { data: payments, loading, refetch } = usePayments(filter);
   const { mutate: createPayment, loading: creating } = useCreatePayment();
   const { mutate: processPayment, loading: processing } = useProcessPayment();
+  const { data: stablecoins } = useStablecoins();
   const { toast } = useToast();
 
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState('USDC');
   const [reference, setReference] = useState('');
   const [formError, setFormError] = useState('');
 
@@ -68,7 +71,8 @@ export function Payments() {
     try {
       await createPayment({
         recipient: recipient.trim(),
-        amountUsdc: amountNum,
+        amount: amountNum,
+        currency,
         reference: reference.trim() || undefined,
       });
       setRecipient('');
@@ -97,7 +101,7 @@ export function Payments() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Payments</h1>
-        <p className="mt-1 text-sm text-text-muted">Create and manage USDC payments</p>
+        <p className="mt-1 text-sm text-text-muted">Create and manage stablecoin payments</p>
       </div>
 
       {/* Create payment form */}
@@ -115,7 +119,7 @@ export function Payments() {
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            <div className="md:col-span-5">
+            <div className="md:col-span-4">
               <Input
                 label="Recipient"
                 placeholder="Solana address..."
@@ -125,7 +129,7 @@ export function Payments() {
             </div>
             <div className="md:col-span-2">
               <Input
-                label="Amount (USDC)"
+                label={`Amount (${currency})`}
                 type="number"
                 step="0.01"
                 min="0"
@@ -134,7 +138,21 @@ export function Payments() {
                 onChange={(e) => setAmount(e.target.value)}
               />
             </div>
-            <div className="md:col-span-3">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-text-secondary mb-1.5">Token</label>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                className="w-full rounded-lg border border-border bg-bg-card px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-teal/50 focus:border-teal"
+              >
+                {(stablecoins ?? [{ symbol: 'USDC', name: 'USD Coin', mint: '' }]).map((s) => (
+                  <option key={s.symbol} value={s.symbol}>
+                    {s.symbol}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="md:col-span-2">
               <Input
                 label="Reference (optional)"
                 placeholder="Invoice #123"
@@ -243,7 +261,7 @@ export function Payments() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className="text-sm font-mono font-medium text-text-primary">
-                          {fmtUsdc(p.amountUsdc)}
+                          {fmtUsdc(p.amount)} {p.currency}
                         </span>
                       </td>
                       <td className="px-6 py-4">

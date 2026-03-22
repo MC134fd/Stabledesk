@@ -14,6 +14,7 @@ export default defineConfig({
       '/health': 'http://localhost:3000',
       '/settings': 'http://localhost:3000',
       '/execute': 'http://localhost:3000',
+      '/stablecoins': 'http://localhost:3000',
     },
   },
 })

@@ -11,6 +11,7 @@ import type {
   AuditEvent,
   HealthResponse,
   CreatePaymentInput,
+  StablecoinOption,
 } from './types';
 
 export function useTreasuryState() {
@@ -50,6 +51,13 @@ export function useLending() {
 export function useBestApy(token: string) {
   return usePolling(
     () => apiGet<BestApyResponse>(`/lending/best-apy/${token}`),
+    REFRESH_INTERVAL,
+  );
+}
+
+export function useStablecoins() {
+  return usePolling(
+    () => apiGet<StablecoinOption[]>('/stablecoins'),
     REFRESH_INTERVAL,
   );
 }

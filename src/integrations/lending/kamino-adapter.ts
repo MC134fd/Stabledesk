@@ -105,7 +105,8 @@ export function createKaminoAdapter(
         if (!reserve) continue;
 
         const depositAmount = obligation.getDepositAmountByReserve(reserve);
-        const amount = BigInt(Math.floor(Number(depositAmount) * (10 ** stable.decimals)));
+        // getDepositAmountByReserve returns human-readable units (already divided by mintFactor)
+        const amount = BigInt(Math.round(Number(depositAmount) * (10 ** stable.decimals)));
         if (amount <= 0n) continue;
 
         let apy = 0;

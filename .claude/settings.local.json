@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node:*)",
+      "Bash(grep -r getDepositAmountByReserve node_modules/@kamino-finance/klend-sdk/dist --include=*.d.ts -l)",
+      "Bash(npx tsc:*)",
+      "Bash(xargs grep:*)",
+      "Bash(find /c/Users/Isaac/all_code/Stabledesk/src -name *.ts -type f)"
+    ]
+  }
+}

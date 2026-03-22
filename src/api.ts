@@ -10,6 +10,7 @@ import { auditService } from "./audit/audit-service.js";
 import { fmtUsdc } from "./core/liquidity-policy.js";
 import type { TreasuryState } from "./core/treasury-state.js";
 import type { CreatePaymentInput, PaymentStatus } from "./payments/payment-types.js";
+import { getEnabledStablecoins, getStablecoin } from "./config/stablecoins.js";
 import type { LendingManager } from "./integrations/lending/manager.js";
 import type { PaymentService } from "./payments/payment-service.js";
 import { createAuthRoutes } from "./auth/auth-routes.js";
@@ -170,14 +171,14 @@ export function createApi(deps: ApiDeps) {
         protocol: p.protocol,
         token: p.token,
         mint: p.mint,
-        deposited: p.depositedAmount.toString(),
+        deposited: (Number(p.depositedAmount) / 1_000_000).toFixed(6),
         apy: p.supplyApy,
         apyFormatted: `${(p.supplyApy * 100).toFixed(2)}%`,
       })),
       totalByToken: Object.fromEntries(
-        [...portfolio.totalByToken].map(([k, v]) => [k, v.toString()]),
+        [...portfolio.totalByToken].map(([k, v]) => [k, (Number(v) / 1_000_000).toFixed(6)]),
       ),
-      totalValueUsdc: portfolio.totalValueUsdc.toString(),
+      totalValueUsdc: (Number(portfolio.totalValueUsdc) / 1_000_000).toFixed(6),
     });
   });
 
@@ -194,6 +195,17 @@ export function createApi(deps: ApiDeps) {
     });
   });
 
+  // Enabled stablecoins (for frontend dropdown)
+  app.get("/stablecoins", (c: Context) => {
+    return c.json(
+      getEnabledStablecoins().map((s) => ({
+        symbol: s.symbol,
+        name: s.name,
+        mint: s.mint,
+      })),
+    );
+  });
+
   // List payments
   app.get("/payments", (c: Context) => {
     const status = c.req.query("status");
@@ -203,22 +215,19 @@ export function createApi(deps: ApiDeps) {
     const payments = status
       ? deps.paymentService.listPayments().filter((p) => p.status === (status as PaymentStatus))
       : deps.paymentService.listPayments();
-    return c.json(
-      payments.map((p) => ({
-        ...p,
-        amountUsdcFormatted: fmtUsdc(p.amountUsdc),
-      })),
-    );
+    return c.json(payments);
   });
 
   // Create a payment
   app.post("/payments", async (c: Context) => {
     try {
       const body = await c.req.json() as Record<string, unknown>;
-      const { recipient, amountUsdc, reference, dueAt } = body;
+      const { recipient, amount, amountUsdc, currency, reference, dueAt } = body;
 
-      if (!recipient || amountUsdc === undefined || amountUsdc === null) {
-        return c.json({ error: "recipient and amountUsdc are required" }, 400);
+      // Support both 'amount' and legacy 'amountUsdc'
+      const rawAmount = amount ?? amountUsdc;
+      if (!recipient || rawAmount === undefined || rawAmount === null) {
+        return c.json({ error: "recipient and amount are required" }, 400);
       }
 
       // Validate recipient is a valid Solana public key
@@ -226,15 +235,22 @@ export function createApi(deps: ApiDeps) {
         return c.json({ error: "recipient must be a valid Solana public key" }, 400);
       }
 
-      // Validate amountUsdc is a positive number
-      const parsedAmount = typeof amountUsdc === "string" ? parseFloat(amountUsdc) : Number(amountUsdc);
+      // Validate amount is a positive number
+      const parsedAmount = typeof rawAmount === "string" ? parseFloat(rawAmount) : Number(rawAmount);
       if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-        return c.json({ error: "amountUsdc must be a positive number (human USDC, e.g. 100 = 100 USDC)" }, 400);
+        return c.json({ error: "amount must be a positive number" }, 400);
+      }
+
+      // Validate currency if provided
+      const currencyStr = typeof currency === "string" ? currency.toUpperCase() : "USDC";
+      if (!getStablecoin(currencyStr)) {
+        return c.json({ error: `Unsupported token: ${currencyStr}` }, 400);
       }
 
       const input: CreatePaymentInput = {
         recipient,
-        amountUsdc: parsedAmount,
+        amount: parsedAmount,
+        currency: currencyStr,
         ...(typeof reference === "string" && { reference }),
         ...(typeof dueAt === "string" && { dueAt }),
       };

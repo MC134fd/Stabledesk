@@ -15,10 +15,10 @@ export interface TreasuryPolicy {
 
 /** Sensible defaults for a conservative treasury policy. */
 export const defaultPolicy: TreasuryPolicy = {
-  minLiquidReserveUsdc: 500_000_000n,         // 500 USDC
-  targetLiquidReserveUsdc: 1_000_000_000n,     // 1,000 USDC
-  maxSingleTransactionUsdc: 50_000_000_000n,   // 50,000 USDC
-  kaminoTargetAllocationPct: 80,
+  minLiquidReserveUsdc: 1_000_000n,            // 1 USDC
+  targetLiquidReserveUsdc: 2_000_000n,         // 2 USDC
+  maxSingleTransactionUsdc: 1_000_000_000n,    // 1,000 USDC
+  kaminoTargetAllocationPct: 50,
   dailySpendingCapUsdc: 0n,                    // unlimited
   disallowedRecipients: [],
 };

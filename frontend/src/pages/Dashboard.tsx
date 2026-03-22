@@ -10,6 +10,7 @@ import { BalanceSheet } from '../components/BalanceSheet';
 import { useSetExecutionMode, useExecute } from '../api/hooks';
 import { fmtUsdc } from '../lib/format';
 import { DECISION_COLORS } from '../lib/constants';
+import { useToast } from '../context/ToastContext';
 
 function MetricCard({
   label,
@@ -44,6 +45,9 @@ function MetricCard({
 export function Dashboard() {
   const { data: state, loading, error, refetch, secondsUntilRefresh } = useTreasuryState();
   const { data: health } = useHealth();
+  const { toast } = useToast();
+  const { mutate: setMode, loading: modeLoading } = useSetExecutionMode();
+  const { mutate: executeAction, loading: executeLoading } = useExecute();
 
   const isConnected = !!health && health.status === 'ok';
 
@@ -83,8 +87,6 @@ export function Dashboard() {
   const decision = state?.lastDecision;
   const tokenBalances = state?.tokenBalances ?? {};
   const totalLiquidUsd = Object.values(tokenBalances).reduce((sum, v) => sum + v, 0);
-  const { mutate: setMode, loading: modeLoading } = useSetExecutionMode();
-  const { mutate: executeAction, loading: executeLoading } = useExecute();
   const currentMode = state?.executionMode ?? 'manual';
   const pendingRec = state?.pendingRecommendation;
 
@@ -140,7 +142,7 @@ export function Dashboard() {
             <div className="flex items-center justify-between">
               <CardTitle>Policy Engine</CardTitle>
               <button
-                onClick={() => setMode(currentMode === 'auto' ? 'manual' : 'auto').then(() => refetch())}
+                onClick={() => setMode(currentMode === 'auto' ? 'manual' : 'auto').then(() => refetch()).catch((err) => toast(err instanceof Error ? err.message : 'Failed to change mode', 'error'))}
                 disabled={modeLoading}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                   currentMode === 'auto' ? 'bg-teal' : 'bg-bg-surface'
@@ -178,7 +180,7 @@ export function Dashboard() {
                 <div className="space-y-2">
                   <p className="text-xs text-text-muted">Pending Action</p>
                   <Button
-                    onClick={() => executeAction().then(() => refetch())}
+                    onClick={() => executeAction().then(() => { toast('Execution submitted', 'success'); refetch(); }).catch((err) => toast(err instanceof Error ? err.message : 'Execution failed', 'error'))}
                     loading={executeLoading}
                     variant="primary"
                     size="sm"

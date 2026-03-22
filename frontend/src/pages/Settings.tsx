@@ -32,10 +32,10 @@ export function Settings() {
           <Badge>Read-only</Badge>
         </CardHeader>
         <div className="space-y-0">
-          <SettingsRow label="Min Liquid Reserve" value="500 USDC" />
-          <SettingsRow label="Target Liquid Reserve" value="1,000 USDC" />
-          <SettingsRow label="Max Single Transaction" value="50,000 USDC" />
-          <SettingsRow label="Target Allocation" value="80% Deployed" />
+          <SettingsRow label="Min Liquid Reserve" value="1 USDC" />
+          <SettingsRow label="Target Liquid Reserve" value="2 USDC" />
+          <SettingsRow label="Max Single Transaction" value="1,000 USDC" />
+          <SettingsRow label="Target Allocation" value="50% Deployed" />
           <SettingsRow label="Daily Spending Cap" value="Unlimited" />
         </div>
         <p className="mt-4 text-xs text-text-muted">

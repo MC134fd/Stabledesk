@@ -58,7 +58,7 @@ export async function runSchedulerCycle(deps: SchedulerCycleDeps): Promise<Sched
 
   // Step 2: read pending payments
   const pending = paymentService.listPendingPayments();
-  const pendingTotal = pending.reduce((sum, p) => sum + p.amountUsdc, 0);
+  const pendingTotal = pending.reduce((sum, p) => sum + p.amount, 0);
 
   // Step 3: evaluate liquidity
   const { targetLiquidity, excessLiquidity, liquidityShortfall } = evaluateLiquidityPolicy({
@@ -176,6 +176,12 @@ export function createScheduler(config: SchedulerCreateConfig): SchedulerHandle 
             config.solana.connection,
             config.solana.keypair.publicKey.toBase58(),
             () => config.paymentService.summarizePendingPayments(),
+            async () => {
+              // Sum all deployed USDC across lending protocols
+              const portfolio = await config.lendingManager.getPortfolio();
+              const usdcDeployed = portfolio.totalByToken.get('USDC') ?? 0n;
+              return Number(usdcDeployed) / 1_000_000;
+            },
           ),
         paymentService: config.paymentService,
         minLiquidUsdc,

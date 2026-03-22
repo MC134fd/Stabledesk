@@ -44,9 +44,10 @@ export type PolicyDecision = {
 export type PaymentResponse = {
   id: string;
   recipient: string;
-  amountUsdc: number;
-  amountUsdcFormatted: string;
-  currency: 'USDC';
+  amount: number;
+  currency: string;
+  mint: string;
+  decimals: number;
   status: PaymentStatus;
   createdAt: string;
   dueAt?: string;
@@ -96,9 +97,16 @@ export type HealthResponse = {
   timestamp: string;
 };
 
+export type StablecoinOption = {
+  symbol: string;
+  name: string;
+  mint: string;
+};
+
 export type CreatePaymentInput = {
   recipient: string;
-  amountUsdc: number;
+  amount: number;
+  currency?: string;
   reference?: string;
   dueAt?: string;
 };

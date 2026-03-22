@@ -17,7 +17,8 @@ type EnvConfig = {
   /** Kamino markets (comma-separated) */
   KAMINO_MARKET_ADDRESSES: string[];
   KAMINO_MARKET_LABELS: string[];
-  KAMINO_PROGRAM_ID: string | undefined;
+  /** Kamino program IDs (comma-separated, one per market; empty = default) */
+  KAMINO_PROGRAM_IDS: (string | undefined)[];
   /** Scheduler tick interval in seconds (default: 60) */
   SCHEDULER_INTERVAL_SECONDS: number;
   /** Optional API key for write endpoints */
@@ -60,7 +61,10 @@ export function loadEnv(): EnvConfig {
       const raw = optionalEnv('KAMINO_MARKET_LABELS') ?? '';
       return raw.split(',').map(s => s.trim()).filter(Boolean);
     })(),
-    KAMINO_PROGRAM_ID: optionalEnv('KAMINO_PROGRAM_ID'),
+    KAMINO_PROGRAM_IDS: (() => {
+      const raw = optionalEnv('KAMINO_PROGRAM_ID') ?? '';
+      return raw.split(',').map(s => s.trim() || undefined);
+    })(),
     SCHEDULER_INTERVAL_SECONDS: parseInt(process.env['SCHEDULER_INTERVAL_SECONDS'] ?? '60', 10),
     API_KEY: optionalEnv('API_KEY'),
     PORT: parseInt(process.env['PORT'] ?? '3000', 10),
