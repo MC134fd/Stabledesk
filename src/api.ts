@@ -124,8 +124,8 @@ export function createApi(deps: ApiDeps) {
       totalLiquid: s.usdcBalance.toFixed(6),
       totalDeployed: s.kaminoUsdcBalance.toFixed(6),
       totalAum: s.totalUsdcExposure.toFixed(6),
-      // Multi-token/multi-protocol stubs (future milestone)
-      tokens: {},
+      // Multi-token balances
+      tokenBalances: s.tokenBalances,
       positions: [],
     });
   });

@@ -159,7 +159,6 @@ export type SchedulerCreateConfig = {
   policy: TreasuryPolicy;
   paymentService: PaymentService;
   intervalSeconds?: number;
-  usdcMint?: string;
   auditService?: AuditService;
 };
 
@@ -169,7 +168,6 @@ export function createScheduler(config: SchedulerCreateConfig): SchedulerHandle 
   let intervalId: ReturnType<typeof setInterval> | null = null;
 
   const intervalMs = (config.intervalSeconds ?? 60) * 1_000;
-  const usdcMint = config.usdcMint ?? 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
   const minLiquidUsdc = Number(config.policy.minLiquidReserveUsdc) / 1_000_000;
 
   async function tick(): Promise<void> {
@@ -179,7 +177,6 @@ export function createScheduler(config: SchedulerCreateConfig): SchedulerHandle 
           buildTreasuryState(
             config.solana.connection,
             config.solana.keypair.publicKey.toBase58(),
-            usdcMint,
             () => config.paymentService.summarizePendingPayments(),
           ),
         paymentService: config.paymentService,

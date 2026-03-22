@@ -4,8 +4,6 @@ import { buildTreasuryState } from '../core/treasury-state.js';
 import { createPaymentService } from '../payments/payment-service.js';
 import { runSchedulerCycle } from '../core/scheduler.js';
 
-// Override via env vars for non-devnet clusters
-const USDC_MINT = process.env['USDC_MINT'] ?? '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const MIN_LIQUID_USDC = Number(process.env['MIN_LIQUID_USDC'] ?? '500');
 
 export const runScheduler = async (): Promise<void> => {
@@ -18,7 +16,6 @@ export const runScheduler = async (): Promise<void> => {
       buildTreasuryState(
         connection,
         config.treasuryWallet,
-        USDC_MINT,
         () => paymentService.summarizePendingPayments(),
       ),
     paymentService,

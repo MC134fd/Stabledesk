@@ -1,6 +1,6 @@
 import type { Connection } from '@solana/web3.js';
 import { solanaClient } from '../integrations/solana.js';
-import { usdcClient } from '../integrations/usdc.js';
+import { fetchAllStablecoinBalances } from '../integrations/usdc.js';
 
 export type TreasuryState = {
   treasuryWallet: string;
@@ -11,6 +11,7 @@ export type TreasuryState = {
   pendingPaymentsCount: number;
   pendingPaymentsTotal: number;
   lastUpdatedAt: string;
+  tokenBalances: Record<string, number>;
 };
 
 export type PendingPaymentsSummary = {
@@ -24,27 +25,28 @@ const defaultKaminoBalance = async (): Promise<number> => 0;
 export async function buildTreasuryState(
   connection: Connection,
   treasuryWallet: string,
-  usdcMint: string,
   getPendingPayments: () => PendingPaymentsSummary = defaultPendingPayments,
   getKaminoUsdcBalance: () => Promise<number> = defaultKaminoBalance,
 ): Promise<TreasuryState> {
-  const [solBalance, usdcResult, kaminoUsdcBalance] = await Promise.all([
+  const [solBalance, tokenBalances, kaminoUsdcBalance] = await Promise.all([
     solanaClient.getSolBalance(connection, treasuryWallet),
-    usdcClient.getBalance(connection, treasuryWallet, usdcMint),
+    fetchAllStablecoinBalances(connection, treasuryWallet),
     getKaminoUsdcBalance(),
   ]);
 
   const pending = getPendingPayments();
+  const usdcBalance = tokenBalances['USDC'] ?? 0;
 
   return {
     treasuryWallet,
     solBalance,
-    usdcBalance: usdcResult.uiAmount,
+    usdcBalance,
     kaminoUsdcBalance,
-    totalUsdcExposure: usdcResult.uiAmount + kaminoUsdcBalance,
+    totalUsdcExposure: usdcBalance + kaminoUsdcBalance,
     pendingPaymentsCount: pending.count,
     pendingPaymentsTotal: pending.total,
     lastUpdatedAt: new Date().toISOString(),
+    tokenBalances,
   };
 }
 
@@ -58,5 +60,6 @@ export function emptyState(): TreasuryState {
     pendingPaymentsCount: 0,
     pendingPaymentsTotal: 0,
     lastUpdatedAt: new Date().toISOString(),
+    tokenBalances: {},
   };
 }
