@@ -218,7 +218,7 @@ export function Welcome() {
       <footer className="relative z-10 border-t border-border/50 py-8">
         <div className="mx-auto max-w-6xl px-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Logo size={20} />
+            <Logo size={24} />
             <span className="text-sm text-text-muted">StableDesk</span>
           </div>
           <p className="text-xs text-text-muted">
