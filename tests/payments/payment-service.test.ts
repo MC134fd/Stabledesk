@@ -130,6 +130,28 @@ describe('summarizePendingPayments', () => {
     expect(summary.count).toBe(1);
     expect(summary.total).toBe(200);
   });
+
+  it('includes awaiting_liquidity and ready payments in the summary', () => {
+    const svc = makeService();
+    const a = svc.createPayment({ recipient: 'A', amountUsdc: 100 }); // queued
+    const b = svc.createPayment({ recipient: 'B', amountUsdc: 200 });
+    const c = svc.createPayment({ recipient: 'C', amountUsdc: 300 });
+
+    svc.updatePaymentStatus(b.id, 'awaiting_liquidity');
+    svc.updatePaymentStatus(c.id, 'ready');
+
+    const summary = svc.summarizePendingPayments();
+    expect(summary.count).toBe(3);
+    expect(summary.total).toBe(600);
+    void a; // all three are pending
+  });
+
+  it('returns zero count and total when store is empty', () => {
+    const svc = makeService();
+    const summary = svc.summarizePendingPayments();
+    expect(summary.count).toBe(0);
+    expect(summary.total).toBe(0);
+  });
 });
 
 void fixedOptions; // suppress unused-var warning — available for one-off tests if needed
@@ -211,6 +233,13 @@ describe('state machine — complete valid transition paths', () => {
     const svc = makeService();
     const p = svc.createPayment(validInput);
     expect(svc.updatePaymentStatus(p.id, 'awaiting_liquidity').status).toBe('awaiting_liquidity');
+  });
+
+  it('awaiting_liquidity → ready', () => {
+    const svc = makeService();
+    const p = svc.createPayment(validInput);
+    svc.updatePaymentStatus(p.id, 'awaiting_liquidity');
+    expect(svc.updatePaymentStatus(p.id, 'ready').status).toBe('ready');
   });
 
   it('queued → failed', () => {

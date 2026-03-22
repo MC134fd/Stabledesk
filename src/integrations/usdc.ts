@@ -1,4 +1,5 @@
 import { Connection, PublicKey } from '@solana/web3.js';
+import type { SolanaClient } from './solana.js';
 
 // Standard Solana program addresses for ATA derivation (no @solana/spl-token needed)
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
@@ -18,6 +19,36 @@ function deriveAta(wallet: PublicKey, mint: PublicKey): PublicKey {
     ASSOCIATED_TOKEN_PROGRAM_ID,
   );
   return ata;
+}
+
+export type UsdcTokenClient = {
+  getBalance(): Promise<UsdcBalance>;
+};
+
+export type TokenClient = {
+  /** Returns human-readable balances (e.g. USDC amount in dollars) keyed by token symbol */
+  getBalances(): Promise<Map<string, number>>;
+};
+
+export function createUsdcClient(solana: SolanaClient, mint: string): UsdcTokenClient {
+  return {
+    async getBalance(): Promise<UsdcBalance> {
+      return usdcClient.getBalance(
+        solana.connection,
+        solana.keypair.publicKey.toBase58(),
+        mint,
+      );
+    },
+  };
+}
+
+export function createTokenClient(_solana: SolanaClient): TokenClient {
+  return {
+    async getBalances(): Promise<Map<string, number>> {
+      // Multi-token balance fetching — future milestone
+      return new Map();
+    },
+  };
 }
 
 export const usdcClient = {

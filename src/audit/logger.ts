@@ -28,3 +28,14 @@ export const logger = {
   warn:  (message: string, context?: unknown) => emit('warn',  message, context),
   error: (message: string, context?: unknown) => emit('error', message, context),
 };
+
+export type Logger = typeof logger;
+
+export function createLogger(name: string): Logger {
+  return {
+    debug: (message: string, context?: unknown) => emit('debug', `[${name}] ${message}`, context),
+    info:  (message: string, context?: unknown) => emit('info',  `[${name}] ${message}`, context),
+    warn:  (message: string, context?: unknown) => emit('warn',  `[${name}] ${message}`, context),
+    error: (message: string, context?: unknown) => emit('error', `[${name}] ${message}`, context),
+  };
+}

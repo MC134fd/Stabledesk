@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign In — StableDesk</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+  --border-focus: #0f766e;
+  --text: #111827;
+  --text-muted: #6b7280;
+  --text-subtle: #9ca3af;
+  --accent: #0f766e;
+  --error: #dc2626;
+  --error-bg: #fef2f2;
+  --radius: 8px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html { font-size: 16px; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 40px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+/* Brand */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 32px;
+}
+.brand-icon {
+  width: 34px;
+  height: 34px;
+  background: #f0fdfa;
+  border: 1px solid #99f6e4;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.brand-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+/* Heading */
+.card-heading {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+.card-sub {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-bottom: 28px;
+  line-height: 1.5;
+}
+
+/* Form */
+.form-field { margin-bottom: 16px; }
+.form-field label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.form-field input {
+  display: block;
+  width: 100%;
+  height: 44px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.form-field input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(15,118,110,0.1);
+}
+.form-field input::placeholder { color: var(--text-subtle); }
+.form-field input:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Error message */
+.error-msg {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 13px;
+  background: var(--error-bg);
+  border: 1px solid #fecaca;
+  border-radius: var(--radius);
+  color: var(--error);
+  font-size: 0.8125rem;
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+.error-msg.visible { display: flex; }
+
+/* Submit button */
+.btn-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, opacity 120ms ease;
+  margin-top: 4px;
+}
+.btn-submit:hover:not(:disabled) { background: #0d6961; }
+.btn-submit:disabled { opacity: 0.65; cursor: not-allowed; }
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Divider */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 20px;
+  color: var(--text-subtle);
+  font-size: 0.75rem;
+}
+.divider::before, .divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+/* Register toggle */
+.toggle-link {
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.toggle-link button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Register section */
+#register-section { display: none; margin-top: 20px; }
+#register-section.visible { display: block; }
+.section-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 14px;
+}
+
+/* Back to sign-in */
+.back-link {
+  text-align: center;
+  margin-top: 16px;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="brand">
+    <div class="brand-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    </div>
+    <span class="brand-name">StableDesk</span>
+  </div>
+
+  <!-- LOGIN FORM -->
+  <div id="login-section">
+    <h1 class="card-heading">Sign in</h1>
+    <p class="card-sub">Access your treasury console.</p>
+
+    <div class="error-msg" id="login-error" role="alert">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" flex-shrink="0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span id="login-error-text"></span>
+    </div>
+
+    <form id="login-form" onsubmit="handleLogin(event)" novalidate>
+      <div class="form-field">
+        <label for="login-email">Email</label>
+        <input type="email" id="login-email" name="email" placeholder="you@company.com" autocomplete="email" required>
+      </div>
+      <div class="form-field">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" name="password" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn-submit" id="login-btn">Sign in</button>
+    </form>
+
+    <div class="divider">or</div>
+    <div class="toggle-link">
+      <span>First time? </span>
+      <button onclick="showRegister()">Create your account</button>
+    </div>
+  </div>
+
+  <!-- REGISTER FORM -->
+  <div id="register-section">
+    <h2 class="card-heading">Create account</h2>
+    <p class="card-sub">Set up your StableDesk admin account. Only one account is allowed.</p>
+
+    <div class="error-msg" id="reg-error" role="alert">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span id="reg-error-text"></span>
+    </div>
+
+    <form id="register-form" onsubmit="handleRegister(event)" novalidate>
+      <div class="form-field">
+        <label for="reg-email">Email</label>
+        <input type="email" id="reg-email" name="email" placeholder="you@company.com" autocomplete="email" required>
+      </div>
+      <div class="form-field">
+        <label for="reg-password">Password</label>
+        <input type="password" id="reg-password" name="password" placeholder="Min. 8 characters" autocomplete="new-password" required>
+      </div>
+      <button type="submit" class="btn-submit" id="reg-btn">Create account</button>
+    </form>
+
+    <div class="back-link">
+      <a onclick="showLogin()">Back to sign in</a>
+    </div>
+  </div>
+</div>
+
+<script>
+function showRegister() {
+  document.getElementById('login-section').style.display = 'none';
+  document.getElementById('register-section').style.display = 'block';
+}
+
+function showLogin() {
+  document.getElementById('register-section').style.display = 'none';
+  document.getElementById('login-section').style.display = 'block';
+}
+
+function setFormLoading(formId, btnId, loading) {
+  const btn = document.getElementById(btnId);
+  const inputs = document.querySelectorAll(`#${formId} input`);
+  btn.disabled = loading;
+  inputs.forEach(el => el.disabled = loading);
+  if (loading) {
+    btn.innerHTML = '<div class="spinner"></div>';
+  } else {
+    btn.innerHTML = formId === 'login-form' ? 'Sign in' : 'Create account';
+  }
+}
+
+function showError(errId, textId, msg) {
+  const box = document.getElementById(errId);
+  box.classList.add('visible');
+  document.getElementById(textId).textContent = msg;
+}
+
+function hideError(errId) {
+  document.getElementById(errId).classList.remove('visible');
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  hideError('login-error');
+
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+
+  if (!email || !password) {
+    showError('login-error', 'login-error-text', 'Email and password are required.');
+    return;
+  }
+
+  setFormLoading('login-form', 'login-btn', true);
+  try {
+    const res = await fetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (res.ok) {
+      window.location.href = '/app';
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showError('login-error', 'login-error-text', data.error || 'Sign in failed. Please try again.');
+    }
+  } catch {
+    showError('login-error', 'login-error-text', 'Unable to connect. Please try again.');
+  } finally {
+    setFormLoading('login-form', 'login-btn', false);
+  }
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  hideError('reg-error');
+
+  const email = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+
+  if (!email || !password) {
+    showError('reg-error', 'reg-error-text', 'Email and password are required.');
+    return;
+  }
+  if (password.length < 8) {
+    showError('reg-error', 'reg-error-text', 'Password must be at least 8 characters.');
+    return;
+  }
+
+  setFormLoading('register-form', 'reg-btn', true);
+  try {
+    const res = await fetch('/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (res.ok) {
+      window.location.href = '/app';
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showError('reg-error', 'reg-error-text', data.error || 'Registration failed. Please try again.');
+    }
+  } catch {
+    showError('reg-error', 'reg-error-text', 'Unable to connect. Please try again.');
+  } finally {
+    setFormLoading('register-form', 'reg-btn', false);
+  }
+}
+</script>
+
+</body>
+</html>

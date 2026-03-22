@@ -16,6 +16,18 @@ describe('computeTargetLiquidity', () => {
     const withPending = computeTargetLiquidity(1000, 200);
     expect(withPending).toBe(base + 200);
   });
+
+  it('negative inputs normalized to 0', () => {
+    expect(computeTargetLiquidity(-500, -200)).toBe(0);
+  });
+
+  it('NaN inputs normalized to 0', () => {
+    expect(computeTargetLiquidity(NaN, NaN)).toBe(0);
+  });
+
+  it('Infinity inputs normalized to 0', () => {
+    expect(computeTargetLiquidity(Infinity, Infinity)).toBe(0);
+  });
 });
 
 describe('computeExcessLiquidity', () => {
@@ -30,6 +42,14 @@ describe('computeExcessLiquidity', () => {
   it('exact-threshold balance => excess is 0', () => {
     expect(computeExcessLiquidity(1000, 1000)).toBe(0);
   });
+
+  it('NaN inputs normalized to 0', () => {
+    expect(computeExcessLiquidity(NaN, NaN)).toBe(0);
+  });
+
+  it('negative inputs normalized to 0', () => {
+    expect(computeExcessLiquidity(-100, -200)).toBe(0);
+  });
 });
 
 describe('computeLiquidityShortfall', () => {
@@ -43,6 +63,14 @@ describe('computeLiquidityShortfall', () => {
 
   it('exact-threshold balance => shortfall is 0', () => {
     expect(computeLiquidityShortfall(1000, 1000)).toBe(0);
+  });
+
+  it('NaN inputs normalized to 0', () => {
+    expect(computeLiquidityShortfall(NaN, NaN)).toBe(0);
+  });
+
+  it('negative inputs normalized to 0', () => {
+    expect(computeLiquidityShortfall(-100, -200)).toBe(0);
   });
 });
 

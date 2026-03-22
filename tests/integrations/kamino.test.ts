@@ -71,6 +71,12 @@ describe('createKaminoClient — position', () => {
     expect(pos.accruedYieldUsdc).toBe(0);
     expect(pos.totalUsdc).toBe(0);
   });
+
+  it('default zero-position vaultId is the stub placeholder', async () => {
+    const client = createKaminoClient();
+    const pos = await client.getKaminoPosition();
+    expect(pos.vaultId).toBe('kamino-vault-placeholder');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -121,6 +127,20 @@ describe('createKaminoClient — deposit / withdraw', () => {
       handlers: { withdraw: async () => { throw new Error('Insufficient funds in vault'); } },
     });
     await expect(client.withdrawFromKamino(100)).rejects.toThrow('Insufficient funds');
+  });
+
+  it('deposit with no handler returns ok and the same amountUsdc', async () => {
+    const client = createKaminoClient(); // no deposit handler — uses stub
+    const result = await client.depositToKamino(500);
+    expect(result.ok).toBe(true);
+    expect(result.amountUsdc).toBe(500);
+  });
+
+  it('withdraw with no handler returns ok and the same amountUsdc', async () => {
+    const client = createKaminoClient(); // no withdraw handler — uses stub
+    const result = await client.withdrawFromKamino(250);
+    expect(result.ok).toBe(true);
+    expect(result.amountUsdc).toBe(250);
   });
 
   it('position with non-zero yield — totalUsdc equals depositedUsdc + accruedYieldUsdc', async () => {

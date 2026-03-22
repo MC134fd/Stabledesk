@@ -17,6 +17,8 @@ export type Payment = {
   createdAt: string;
   dueAt?: string;
   reference?: string;
+  txSignature?: string;    // Set after successful on-chain execution
+  failureReason?: string;  // Set if status is 'failed'
 };
 
 export type CreatePaymentInput = {
@@ -25,6 +27,9 @@ export type CreatePaymentInput = {
   dueAt?: string;
   reference?: string;
 };
+
+/** Alias for CreatePaymentInput — used by API layer */
+export type PaymentRequest = CreatePaymentInput;
 
 export type PendingPaymentsSummary = {
   count: number;

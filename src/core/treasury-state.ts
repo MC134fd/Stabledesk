@@ -47,3 +47,16 @@ export async function buildTreasuryState(
     lastUpdatedAt: new Date().toISOString(),
   };
 }
+
+export function emptyState(): TreasuryState {
+  return {
+    treasuryWallet: '',
+    solBalance: 0,
+    usdcBalance: 0,
+    kaminoUsdcBalance: 0,
+    totalUsdcExposure: 0,
+    pendingPaymentsCount: 0,
+    pendingPaymentsTotal: 0,
+    lastUpdatedAt: new Date().toISOString(),
+  };
+}

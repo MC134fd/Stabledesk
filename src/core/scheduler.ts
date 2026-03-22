@@ -1,8 +1,12 @@
 import type { TreasuryState } from './treasury-state.js';
 import { evaluateLiquidityPolicy } from './liquidity-policy.js';
+import { buildTreasuryState, emptyState } from './treasury-state.js';
 import type { PaymentService } from '../payments/payment-service.js';
 import type { KaminoClient } from '../integrations/kamino.js';
 import type { AuditService } from '../audit/audit-service.js';
+import type { SolanaClient } from '../integrations/solana.js';
+import type { LendingManager } from '../integrations/lending/manager.js';
+import type { TreasuryPolicy } from '../config/policy.js';
 
 export type SchedulerAction =
   | 'would_deposit'
@@ -135,4 +139,78 @@ export async function runSchedulerCycle(deps: SchedulerCycleDeps): Promise<Sched
   });
 
   return decision;
+}
+
+// ─── Factory ─────────────────────────────────────────────────────────────────
+
+export type SchedulerHandle = {
+  start(): void;
+  stop(): void;
+  getState(): TreasuryState;
+  getLastDecision(): SchedulerDecision | null;
+};
+
+export type SchedulerCreateConfig = {
+  solana: SolanaClient;
+  tokenClient: unknown;
+  lendingManager: LendingManager;
+  kora: unknown;
+  policy: TreasuryPolicy;
+  paymentService: PaymentService;
+  intervalSeconds?: number;
+  usdcMint?: string;
+  auditService?: AuditService;
+};
+
+export function createScheduler(config: SchedulerCreateConfig): SchedulerHandle {
+  let currentState: TreasuryState = emptyState();
+  let lastDecision: SchedulerDecision | null = null;
+  let intervalId: ReturnType<typeof setInterval> | null = null;
+
+  const intervalMs = (config.intervalSeconds ?? 60) * 1_000;
+  const usdcMint = config.usdcMint ?? 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+  const minLiquidUsdc = Number(config.policy.minLiquidReserveUsdc) / 1_000_000;
+
+  async function tick(): Promise<void> {
+    try {
+      const decision = await runSchedulerCycle({
+        getTreasuryState: () =>
+          buildTreasuryState(
+            config.solana.connection,
+            config.solana.keypair.publicKey.toBase58(),
+            usdcMint,
+            () => config.paymentService.summarizePendingPayments(),
+          ),
+        paymentService: config.paymentService,
+        minLiquidUsdc,
+        auditService: config.auditService,
+      });
+      currentState = decision.stateSnapshot;
+      lastDecision = decision;
+    } catch {
+      // Errors are non-fatal — next tick will retry
+    }
+  }
+
+  return {
+    start() {
+      void tick(); // first tick immediately
+      intervalId = setInterval(() => { void tick(); }, intervalMs);
+    },
+
+    stop() {
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    },
+
+    getState() {
+      return currentState;
+    },
+
+    getLastDecision() {
+      return lastDecision;
+    },
+  };
 }

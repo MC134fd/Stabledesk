@@ -185,6 +185,52 @@ describe('createAuditService — date range filtering', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('createAuditService — combined type + date filters', () => {
+  it('filters by type AND fromDate together', () => {
+    let ts = 0;
+    const timestamps = [
+      '2024-01-01T00:00:00.000Z',
+      '2024-06-01T00:00:00.000Z',
+      '2024-06-01T00:00:00.000Z',
+      '2024-12-31T00:00:00.000Z',
+    ];
+    const svc = createAuditService({
+      now: () => timestamps[ts++]!,
+      generateId: () => `d_${ts}`,
+    });
+    svc.recordEvent('scheduler_decision');    // 2024-01-01
+    svc.recordEvent('error');                 // 2024-06-01
+    svc.recordEvent('scheduler_decision');    // 2024-06-01
+    svc.recordEvent('scheduler_decision');    // 2024-12-31
+
+    const result = svc.queryEvents({
+      type: 'scheduler_decision',
+      fromDate: '2024-06-01T00:00:00.000Z',
+    });
+    expect(result).toHaveLength(2);
+    expect(result.every((e) => e.type === 'scheduler_decision')).toBe(true);
+  });
+
+  it('toDate boundary is inclusive — event at exact toDate timestamp is included', () => {
+    let ts = 0;
+    const timestamps = [
+      '2024-06-01T00:00:00.000Z',
+      '2024-06-02T00:00:00.000Z',
+    ];
+    const svc = createAuditService({
+      now: () => timestamps[ts++]!,
+      generateId: () => `e_${ts}`,
+    });
+    svc.recordEvent('scheduler_decision'); // 2024-06-01 — exactly at toDate
+    svc.recordEvent('error');              // 2024-06-02 — after toDate
+
+    const result = svc.queryEvents({ toDate: '2024-06-01T00:00:00.000Z' });
+    expect(result).toHaveLength(1);
+    expect(result[0]!.type).toBe('scheduler_decision');
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('createAuditService — instance isolation', () => {
   it('two separate instances do not share events', () => {
     const svc1 = createAuditService({ generateId: () => 'id1', now: () => '2024-01-01T00:00:00.000Z' });

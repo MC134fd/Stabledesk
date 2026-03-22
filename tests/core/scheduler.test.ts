@@ -404,6 +404,41 @@ describe('runSchedulerCycle — payment status edge cases', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('runSchedulerCycle — awaiting_liquidity payment stays blocked when shortfall remains', () => {
+  it('awaiting_liquidity payment is NOT promoted when shortfall persists across cycles', async () => {
+    const svc = makeService();
+    const p = svc.createPayment({ recipient: 'Bob', amountUsdc: 800 });
+
+    // Cycle 1 — shortfall, payment goes awaiting_liquidity
+    await runSchedulerCycle(makeDeps(100, 500, svc));
+    expect(svc.getPayment(p.id)?.status).toBe('awaiting_liquidity');
+
+    // Cycle 2 — shortfall still present, payment must stay awaiting_liquidity
+    await runSchedulerCycle(makeDeps(100, 500, svc));
+    expect(svc.getPayment(p.id)?.status).toBe('awaiting_liquidity');
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('runSchedulerCycle — processing payments and would_execute_payment', () => {
+  it('processing payment does NOT trigger would_execute_payment', async () => {
+    const svc = makeService();
+    const p = svc.createPayment({ recipient: 'Alice', amountUsdc: 200 });
+    svc.updatePaymentStatus(p.id, 'ready');
+    svc.updatePaymentStatus(p.id, 'processing');
+
+    // Only a processing payment in the store — no queued/ready payments
+    const result = await runSchedulerCycle({
+      getTreasuryState: () => makeState(5000),
+      paymentService: svc,
+      minLiquidUsdc: 1000,
+    });
+
+    expect(result.actions).not.toContain('would_execute_payment');
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('runSchedulerCycle — execute mode without kaminoClient', () => {
   it('runs without error when executionMode is execute but no kaminoClient provided', async () => {
     const svc = makeService();

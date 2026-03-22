@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { Connection } from '@solana/web3.js';
 import { PublicKey } from '@solana/web3.js';
 import { loadEnv } from '../../src/config/env.js';
 import { solanaClient } from '../../src/integrations/solana.js';
@@ -79,5 +80,44 @@ describe('solanaClient — connection setup', () => {
     const conn = solanaClient.createConnection('https://api.devnet.solana.com');
     expect(conn).toBeDefined();
     expect(typeof conn.getSlot).toBe('function');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// solanaClient.getCurrentSlot — offline, mock injected
+// ---------------------------------------------------------------------------
+describe('solanaClient — getCurrentSlot', () => {
+  it('returns the slot number from the connection', async () => {
+    const conn = { getSlot: vi.fn().mockResolvedValue(123456) } as unknown as Connection;
+    const slot = await solanaClient.getCurrentSlot(conn);
+    expect(slot).toBe(123456);
+    expect(conn.getSlot).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// solanaClient.getSolBalance — offline, mock injected
+// ---------------------------------------------------------------------------
+describe('solanaClient — getSolBalance', () => {
+  it('converts lamports to SOL correctly', async () => {
+    const conn = {
+      getBalance: vi.fn().mockResolvedValue(2_000_000_000), // 2 SOL in lamports
+    } as unknown as Connection;
+    const balance = await solanaClient.getSolBalance(conn, '11111111111111111111111111111111');
+    expect(balance).toBe(2);
+  });
+
+  it('throws on an invalid wallet address', async () => {
+    const conn = { getBalance: vi.fn() } as unknown as Connection;
+    await expect(solanaClient.getSolBalance(conn, 'not-a-valid-key')).rejects.toThrow(
+      'Invalid treasury wallet public key',
+    );
+    expect(conn.getBalance).not.toHaveBeenCalled();
+  });
+
+  it('returns 0 for a zero-lamport balance', async () => {
+    const conn = { getBalance: vi.fn().mockResolvedValue(0) } as unknown as Connection;
+    const balance = await solanaClient.getSolBalance(conn, '11111111111111111111111111111111');
+    expect(balance).toBe(0);
   });
 });

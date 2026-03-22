@@ -142,6 +142,23 @@ describe('buildTreasuryState — Kamino balance', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('buildTreasuryState — error propagation', () => {
+  it('propagates error when getSolBalance throws', async () => {
+    vi.spyOn(solanaClient, 'getSolBalance').mockRejectedValue(new Error('RPC unavailable'));
+    vi.spyOn(usdcClient, 'getBalance').mockResolvedValue(zeroUsdc);
+
+    await expect(buildTreasuryState(conn, WALLET, USDC_MINT)).rejects.toThrow('RPC unavailable');
+  });
+
+  it('propagates error when invalid wallet address is passed', async () => {
+    // getSolBalance validates the address and throws before making any RPC call
+    await expect(buildTreasuryState(conn, 'not-a-valid-key', USDC_MINT)).rejects.toThrow(
+      'Invalid treasury wallet public key',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('buildTreasuryState — pending payments summary', () => {
   it('defaults to zero when no provider is supplied', async () => {
     vi.spyOn(solanaClient, 'getSolBalance').mockResolvedValue(1);
