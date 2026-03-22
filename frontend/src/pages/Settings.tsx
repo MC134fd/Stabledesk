@@ -1,9 +1,6 @@
-import { User, Shield, Server, LogOut } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Shield, Server } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
-import { Button } from '../components/ui/Button';
-import { useAuth } from '../context/AuthContext';
 import { useHealth } from '../api/hooks';
 
 function SettingsRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -16,44 +13,14 @@ function SettingsRow({ label, value }: { label: string; value: React.ReactNode }
 }
 
 export function Settings() {
-  const { user, logout } = useAuth();
   const { data: health } = useHealth();
-  const navigate = useNavigate();
-
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
 
   return (
     <div className="space-y-8 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Settings</h1>
-        <p className="mt-1 text-sm text-text-muted">Account and system configuration</p>
+        <p className="mt-1 text-sm text-text-muted">System configuration</p>
       </div>
-
-      {/* Account */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <User size={16} className="text-text-muted" />
-            <CardTitle>Account</CardTitle>
-          </div>
-        </CardHeader>
-        <div className="space-y-0">
-          <SettingsRow label="Email" value={user?.email ?? '—'} />
-          <SettingsRow
-            label="Created"
-            value={user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
-          />
-        </div>
-        <div className="mt-6">
-          <Button variant="danger" onClick={handleLogout}>
-            <LogOut size={16} />
-            Sign Out
-          </Button>
-        </div>
-      </Card>
 
       {/* Treasury Policy */}
       <Card>

@@ -42,6 +42,21 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+
+  .glow-teal {
+    box-shadow: 0 0 12px rgba(45, 212, 191, 0.6), 0 0 4px rgba(45, 212, 191, 0.3);
+  }
+
+  .glow-dot {
+    box-shadow: 0 0 16px rgba(45, 212, 191, 0.8), 0 0 6px rgba(45, 212, 191, 0.4), 0 0 32px rgba(45, 212, 191, 0.3);
+  }
+
+  .grid-pattern {
+    background-image:
+      linear-gradient(rgba(45, 212, 191, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(45, 212, 191, 0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
 }
 
 /* Reduced motion */

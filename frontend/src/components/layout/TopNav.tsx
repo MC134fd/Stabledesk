@@ -1,8 +1,7 @@
-import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CreditCard, BarChart3, ScrollText, Settings, LogOut } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
+import { LayoutDashboard, CreditCard, BarChart3, ScrollText, Settings } from 'lucide-react';
 import clsx from 'clsx';
 import { Logo } from './Logo';
-import { useAuth } from '../../context/AuthContext';
 
 const navItems = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -12,14 +11,6 @@ const navItems = [
 ];
 
 export function TopNav() {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
-
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg-base/80 backdrop-blur-xl">
       <div className="mx-auto max-w-7xl px-6">
@@ -54,8 +45,8 @@ export function TopNav() {
             ))}
           </nav>
 
-          {/* Right: User menu */}
-          <div className="flex items-center gap-4">
+          {/* Right: Settings */}
+          <div className="flex items-center">
             <NavLink
               to="/app/settings"
               className={({ isActive }) =>
@@ -70,17 +61,6 @@ export function TopNav() {
             >
               <Settings size={16} />
             </NavLink>
-            <div className="h-5 w-px bg-border" />
-            <span className="text-xs text-text-muted hidden md:inline">
-              {user?.email}
-            </span>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary hover:text-status-red hover:bg-status-red-dim transition-colors"
-              aria-label="Sign out"
-            >
-              <LogOut size={16} />
-            </button>
           </div>
         </div>
       </div>
