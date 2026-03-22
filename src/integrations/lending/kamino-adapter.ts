@@ -14,7 +14,7 @@ import {
   type KeyPairSigner,
 } from "@solana/kit";
 import type { SolanaClient } from "../solana.js";
-import type { LendingAdapter, LendingPosition, ProtocolId } from "./types.js";
+import type { LendingAdapter, LendingPosition } from "./types.js";
 import { getEnabledStablecoins } from "../../config/stablecoins.js";
 import { createLogger } from "../../audit/logger.js";
 
@@ -45,7 +45,10 @@ export function createKaminoAdapter(
   solana: SolanaClient,
   marketAddress: string,
   programId?: string,
+  adapterLabel?: string,
+  adapterId?: string,
 ): LendingAdapter {
+  const id = adapterId ?? "kamino";
   let market: KaminoMarket | null = null;
   let ownerSigner: KeyPairSigner | null = null;
 
@@ -76,8 +79,8 @@ export function createKaminoAdapter(
   }
 
   return {
-    id: "kamino" as ProtocolId,
-    name: "Kamino Lend",
+    id: id,
+    name: adapterLabel ?? "Kamino Lend",
 
     async initialize() {
       await ensureMarket();
@@ -111,7 +114,7 @@ export function createKaminoAdapter(
         } catch { /* apy stays 0 */ }
 
         positions.push({
-          protocol: "kamino",
+          protocol: id,
           token: stable.symbol,
           mint: stable.mint,
           depositedAmount: amount,

@@ -49,10 +49,20 @@ export async function start() {
   // 5. Lending protocol adapters
   const adapters: LendingAdapter[] = [];
 
-  // Kamino (always enabled if market address is set)
-  if (env.KAMINO_MARKET_ADDRESS) {
+  // Kamino markets (comma-separated)
+  const kaminoMarkets = env.KAMINO_MARKET_ADDRESSES;
+  for (let i = 0; i < kaminoMarkets.length; i++) {
+    const marketAddr = kaminoMarkets[i];
+    const label = env.KAMINO_MARKET_LABELS[i];
+    const isMulti = kaminoMarkets.length > 1;
+    const adapterLabel = isMulti
+      ? `Kamino Lend (${label || `Market ${i + 1}`})`
+      : 'Kamino Lend';
+    const adapterId = isMulti
+      ? `kamino-${(label || `market${i + 1}`).toLowerCase()}`
+      : 'kamino';
     adapters.push(
-      createKaminoAdapter(solana, env.KAMINO_MARKET_ADDRESS, env.KAMINO_PROGRAM_ID || undefined),
+      createKaminoAdapter(solana, marketAddr, env.KAMINO_PROGRAM_ID || undefined, adapterLabel, adapterId),
     );
   }
 

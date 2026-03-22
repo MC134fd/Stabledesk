@@ -1,7 +1,7 @@
 import type { Transaction } from "@solana/web3.js";
 
 /** Unique identifier for a lending protocol */
-export type ProtocolId = "kamino" | "marginfi" | "save" | "juplend";
+export type ProtocolId = string;
 
 /** A deposit position in a single protocol for a single token */
 export interface LendingPosition {

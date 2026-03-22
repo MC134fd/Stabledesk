@@ -14,8 +14,9 @@ type EnvConfig = {
   KORA_ENDPOINT: string | undefined;
   KORA_API_KEY: string | undefined;
   KORA_FEE_TOKEN: string | undefined;
-  /** Optional Kamino market */
-  KAMINO_MARKET_ADDRESS: string | undefined;
+  /** Kamino markets (comma-separated) */
+  KAMINO_MARKET_ADDRESSES: string[];
+  KAMINO_MARKET_LABELS: string[];
   KAMINO_PROGRAM_ID: string | undefined;
   /** Scheduler tick interval in seconds (default: 60) */
   SCHEDULER_INTERVAL_SECONDS: number;
@@ -51,7 +52,14 @@ export function loadEnv(): EnvConfig {
     KORA_ENDPOINT: optionalEnv('KORA_ENDPOINT'),
     KORA_API_KEY: optionalEnv('KORA_API_KEY'),
     KORA_FEE_TOKEN: optionalEnv('KORA_FEE_TOKEN'),
-    KAMINO_MARKET_ADDRESS: optionalEnv('KAMINO_MARKET_ADDRESS'),
+    KAMINO_MARKET_ADDRESSES: (() => {
+      const raw = optionalEnv('KAMINO_MARKET_ADDRESS') ?? '';
+      return raw.split(',').map(s => s.trim()).filter(Boolean);
+    })(),
+    KAMINO_MARKET_LABELS: (() => {
+      const raw = optionalEnv('KAMINO_MARKET_LABELS') ?? '';
+      return raw.split(',').map(s => s.trim()).filter(Boolean);
+    })(),
     KAMINO_PROGRAM_ID: optionalEnv('KAMINO_PROGRAM_ID'),
     SCHEDULER_INTERVAL_SECONDS: parseInt(process.env['SCHEDULER_INTERVAL_SECONDS'] ?? '60', 10),
     API_KEY: optionalEnv('API_KEY'),
