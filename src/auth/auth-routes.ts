@@ -9,6 +9,7 @@ import {
   deleteSession,
   SESSION_COOKIE,
   SESSION_MAX_AGE,
+  SESSION_MAX_AGE_REMEMBER,
 } from "./sessions.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -66,7 +67,7 @@ export function createAuthRoutes() {
       path: "/",
     });
 
-    return c.json({ id, email }, 201);
+    return c.json({ user: { id, email } }, 201);
   });
 
   // POST /auth/login
@@ -84,6 +85,8 @@ export function createAuthRoutes() {
     if (!email || !password) {
       return c.json({ error: "Email and password are required" }, 400);
     }
+
+    const rememberMe = typeof body.rememberMe === "boolean" ? body.rememberMe : false;
 
     const db = getDatabase();
     const user = db
@@ -104,16 +107,17 @@ export function createAuthRoutes() {
       return c.json({ error: "Invalid credentials" }, 401);
     }
 
-    const sessionId = createSession(user.id);
+    const sessionId = createSession(user.id, rememberMe);
+    const maxAge = rememberMe ? SESSION_MAX_AGE_REMEMBER : SESSION_MAX_AGE;
     setCookie(c, SESSION_COOKIE, sessionId, {
       httpOnly: true,
       sameSite: "Lax",
       secure: isProduction(),
-      maxAge: SESSION_MAX_AGE,
+      maxAge,
       path: "/",
     });
 
-    return c.json({ id: user.id, email: user.email });
+    return c.json({ user: { id: user.id, email: user.email } });
   });
 
   // POST /auth/logout

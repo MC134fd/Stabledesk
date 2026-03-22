@@ -94,8 +94,8 @@ describe("POST /register", () => {
     });
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.email).toBe("admin@test.com");
-    expect(body.id).toBeTruthy();
+    expect(body.user.email).toBe("admin@test.com");
+    expect(body.user.id).toBeTruthy();
   });
 
   it("rejects a second registration with 403", async () => {
@@ -155,7 +155,7 @@ describe("POST /login", () => {
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    expect(body.email).toBe("user@test.com");
+    expect(body.user.email).toBe("user@test.com");
 
     const setCookie = res.headers.get("set-cookie") ?? "";
     expect(setCookie).toContain("sd_session=");

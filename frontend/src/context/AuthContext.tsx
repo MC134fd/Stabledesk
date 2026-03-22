@@ -5,7 +5,7 @@ import type { AuthUser } from '../api/types';
 type AuthState = {
   user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -23,8 +23,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const result = await apiPost<{ user: AuthUser }>('/auth/login', { email, password });
+  const login = useCallback(async (email: string, password: string, rememberMe?: boolean) => {
+    const result = await apiPost<{ user: AuthUser }>('/auth/login', { email, password, rememberMe });
     setUser(result.user);
   }, []);
 
