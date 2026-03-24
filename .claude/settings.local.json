@@ -5,7 +5,14 @@
       "Bash(grep -r getDepositAmountByReserve node_modules/@kamino-finance/klend-sdk/dist --include=*.d.ts -l)",
       "Bash(npx tsc:*)",
       "Bash(xargs grep:*)",
-      "Bash(find /c/Users/Isaac/all_code/Stabledesk/src -name *.ts -type f)"
+      "Bash(find /c/Users/Isaac/all_code/Stabledesk/src -name *.ts -type f)",
+      "Bash(lsof -ti:3000,5173)",
+      "Bash(xargs kill:*)",
+      "Bash(npx vite:*)",
+      "Bash(lsof -ti:3000)",
+      "Bash(lsof -ti:5173)",
+      "Bash(npm test:*)",
+      "Bash(python3 -c \"import sys,json; scripts=json.load\\(sys.stdin\\).get\\(''''scripts'''',{}\\); print\\(scripts.get\\(''''dev'''',''''\\(not found\\)''''\\)\\)\")"
     ]
   }
 }
